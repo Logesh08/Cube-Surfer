@@ -1,389 +1,322 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cube Surfer</title>
-    <style>
-        body { margin: 0; overflow: hidden; }
-        canvas { display: block; }
-        #ui {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            color: white;
-            font-family: Arial;
-            font-size: 24px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-            pointer-events: none;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cube Surfer</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; }
+    #ui {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      color: white;
+      font-family: Arial;
+      font-size: 24px;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+      pointer-events: none;
+    }
+  </style>
 </head>
 <body>
-    <div id="ui">Score: 0</div>
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-            }
+  <div id="ui">Score: 0</div>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+
+    const scene = new THREE.Scene();
+    const clock = new THREE.Clock();
+    let score = 0;
+    let gameActive = true;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 5, 15);
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(5, 10, 7.5);
+    directionalLight.castShadow = true;
+    scene.add(directionalLight);
+
+    const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
+    const playerMaterial = new THREE.MeshStandardMaterial({
+      color: 0xFFD700,
+      metalness: 0.3,
+      roughness: 0.4
+    });
+    const player = new THREE.Mesh(playerGeometry, playerMaterial);
+    player.castShadow = true;
+    player.position.y = 1.5;
+    scene.add(player);
+
+    const track = new THREE.Group();
+    const trackWidth = 15;
+    const trackHeight = 0.5;
+    const trackMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+    let trackSegments = [];
+    for(let i = 0; i < 5; i++){
+      const segment = new THREE.Mesh(
+        new THREE.BoxGeometry(trackWidth, trackHeight, 20),
+        trackMaterial
+      );
+      segment.position.z = i * -20;
+      segment.position.y = -0.25;
+      segment.receiveShadow = true;
+      track.add(segment);
+      trackSegments.push(segment);
+
+      const railGeometry = new THREE.CylinderGeometry(0.15, 0.15, 20);
+      const railMaterial = new THREE.MeshStandardMaterial({ color: 0x666666, metalness: 0.5 });
+      for(let x of [-7.5, 7.5]){
+        const rail = new THREE.Mesh(railGeometry, railMaterial);
+        rail.rotation.z = Math.PI/2;
+        rail.position.set(x, 0.15, 0);
+        segment.add(rail);
+      }
+      const dividerGeometry = new THREE.BoxGeometry(0.1, 0.2, 19.9);
+      const dividerMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+      for(let x of [-5, 5]){
+        const divider = new THREE.Mesh(dividerGeometry, dividerMaterial);
+        divider.position.set(x, 0.1, 0);
+        segment.add(divider);
+      }
+      const sleeperGeometry = new THREE.BoxGeometry(11, 0.2, 0.3);
+      const sleeperMaterial = new THREE.MeshStandardMaterial({ color: 0x5d432c, roughness: 0.8 });
+      for(let z = -9; z <= 9; z += 2){
+        const sleeper = new THREE.Mesh(sleeperGeometry, sleeperMaterial);
+        sleeper.position.set(0, 0.1, z);
+        segment.add(sleeper);
+      }
+    }
+    scene.add(track);
+
+    let currentLane = 0;  // Valid lanes: -1, 0, 1 (mapped to positions in lanes array)
+    let prevLane = currentLane;
+    const lanes = [-4, 0, 4];
+    const speed = 0.2;
+    let obstacles = [];
+    let coins = [];
+    let isJumping = false;
+    let isAnimating = false;
+    let rollProgress = 0;
+    let rollDirection = 0;
+    let collisionDuringAnimation = false;
+
+    // Chase cube variables
+    let chaseCube = null;
+    let chaseActive = false;
+    let chaseTimer = 0;
+    
+    const cubeGeometry = new THREE.BoxGeometry(3, 3, 3);
+    const cubeMaterial = new THREE.MeshStandardMaterial({
+      color: 0xff0000,
+      emissive: 0xff4444,
+      metalness: 0.7,
+      roughness: 0.3,
+      emissiveIntensity: 2
+    });
+    chaseCube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+    chaseCube.castShadow = true;
+    chaseCube.visible = true;
+    chaseCube.position.set(lanes[currentLane+1], 5, player.position.z - 25);
+    scene.add(chaseCube);
+    const cubeLight = new THREE.PointLight(0xff4444, 50, 20);
+    cubeLight.position.set(0, 0, 0);
+    chaseCube.add(cubeLight);
+
+    window.addEventListener('keydown', (e) => {
+      if (!gameActive || isAnimating) return;
+      let targetLane = currentLane + (e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0);
+      if (targetLane < -1 || targetLane > 1) return;
+      prevLane = currentLane;
+      currentLane = targetLane;
+      isAnimating = true;
+      rollDirection = e.key === 'ArrowLeft' ? -1 : 1;
+    });
+
+    function spawnTrain(){
+      const occupiedLanes = new Set(obstacles.map(ob => ob.userData.lane));
+      const availableLanes = [0, 1, 2].filter(lane => !occupiedLanes.has(lane));
+      if(availableLanes.length < 2) return;
+      const laneIndex = availableLanes[Math.floor(Math.random() * availableLanes.length)];
+      const train = new THREE.Group();
+      const carCount = 3;
+      const carGeometry = new THREE.BoxGeometry(2, 2, 6);
+      const trainMaterial = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0.5 });
+      for(let i = 0; i < carCount; i++){
+        const car = new THREE.Mesh(carGeometry, trainMaterial);
+        car.position.z = i * -6;
+        car.castShadow = true;
+        train.add(car);
+      }
+      train.position.set(lanes[laneIndex], 1, player.position.z - 100);
+      scene.add(train);
+      obstacles.push(train);
+      train.userData.lane = laneIndex;
+    }
+
+    function update(){
+      if (!gameActive) return;
+      const delta = clock.getDelta();
+      score += delta * 10;
+      
+      player.position.x = THREE.MathUtils.lerp(player.position.x, lanes[currentLane+1], isAnimating ? 0.4 : 0.2);
+      player.position.y = Math.max(1.5, player.position.y - (isJumping ? 0.2 : 0));
+      if (player.position.y === 1.5) isJumping = false;
+      
+      trackSegments.forEach(segment => {
+        segment.position.z += speed * 50 * delta;
+        if (segment.position.z > 20) {
+          segment.position.z = -80;
         }
-    </script>
-    <script type="module">
-        import * as THREE from 'three';
-
-        const scene = new THREE.Scene();
-        const clock = new THREE.Clock();
-        let score = 0;
-        let gameActive = true;
-        
-        // Renderer
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.shadowMap.enabled = true;
-        document.body.appendChild(renderer.domElement);
-
-        // Camera
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 5, 15);
-
-        // Lighting
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-        scene.add(ambientLight);
-        
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-        directionalLight.position.set(5, 10, 7.5);
-        directionalLight.castShadow = true;
-        scene.add(directionalLight);
-
-        // Player
-        const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
-        const playerMaterial = new THREE.MeshStandardMaterial({ 
-            color: 0xFFD700,
-            metalness: 0.3,
-            roughness: 0.4
-        });
-        const player = new THREE.Mesh(playerGeometry, playerMaterial);
-        player.castShadow = true;
-        player.position.y = 1.5;
-        scene.add(player);
-
-        // Track System
-        const track = new THREE.Group();
-        const trackWidth = 15;
-        const trackHeight = 0.5;
-        const trackMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
-        let trackSegments = [];
-
-        // Generate track with proper proportions
-        for(let i = 0; i < 5; i++) {
-            const segment = new THREE.Mesh(
-                new THREE.BoxGeometry(trackWidth, trackHeight, 20),
-                trackMaterial
-            );
-            segment.position.z = i * -20;
-            segment.position.y = -0.25;
-            segment.receiveShadow = true;
-            track.add(segment);
-            trackSegments.push(segment);
-
-            // Add elements as children of the segment
-            // Rails
-            const railGeometry = new THREE.CylinderGeometry(0.15, 0.15, 20);
-            const railMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x666666,
-                metalness: 0.5
-            });
-            for(let x of [-7.5, 7.5]) {
-                const rail = new THREE.Mesh(railGeometry, railMaterial);
-                rail.rotation.z = Math.PI/2;
-                rail.position.set(x, 0.15, 0);
-                segment.add(rail);
-            }
-
-            // Lane dividers
-            const dividerGeometry = new THREE.BoxGeometry(0.1, 0.2, 19.9);
-            const dividerMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
-            for(let x of [-5, 5]) {
-                const divider = new THREE.Mesh(dividerGeometry, dividerMaterial);
-                divider.position.set(x, 0.1, 0);
-                segment.add(divider);
-            }
-
-            // Wooden sleepers
-            const sleeperGeometry = new THREE.BoxGeometry(11, 0.2, 0.3);
-            const sleeperMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x5d432c,
-                roughness: 0.8
-            });
-            for(let z = -9; z <= 9; z += 2) {
-                const sleeper = new THREE.Mesh(sleeperGeometry, sleeperMaterial);
-                sleeper.position.set(0, 0.1, z);
-                segment.add(sleeper);
-            }
+      });
+      
+      obstacles.forEach((obstacle, index) => {
+        obstacle.position.z += speed * 70 * delta;
+        if(obstacle.position.z > 50){
+          scene.remove(obstacle);
+          obstacles.splice(index, 1);
         }
-        scene.add(track);
-
-        // Game state
-        let currentLane = 0; // Start in middle lane (0 index is left)
-        const lanes = [-4, 0, 4]; // Indexes: 0=-4(left), 1=0(center), 2=4(right)
-        const speed = 0.2;
-        let obstacles = [];
-        let coins = [];
-        let isJumping = false;
-        let isAnimating = false;
-        let rollProgress = 0;
-        let chaseCube = null;
-        let chaseActive = false;
-        let chaseTimer = 0;
-        let rollDirection = 0;
-        let collisionDuringAnimation = false;
-        let prevLane = 0;
-
-        // Chase cube initialization
-        const cubeGeometry = new THREE.BoxGeometry(3, 3, 3);
-        const cubeMaterial = new THREE.MeshStandardMaterial({ 
-            color: 0xff0000,
-            emissive: 0xff4444,
-            metalness: 0.7,
-            roughness: 0.3,
-            emissiveIntensity: 2 // Increased intensity
-        });
-        chaseCube = new THREE.Mesh(cubeGeometry, cubeMaterial);
-        chaseCube.castShadow = true;
-        chaseCube.visible = false;
-        chaseCube.position.set(0, 0, -100);
-        scene.add(chaseCube);
-        
-        // Add cube light
-        const cubeLight = new THREE.PointLight(0xff4444, 50, 20);
-        cubeLight.position.set(0, 0, 0);
-        chaseCube.add(cubeLight);
-
-        // Controls
-        window.addEventListener('keydown', (e) => {
-            if (!gameActive || isAnimating) return;
-            const targetLane = currentLane + (e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0);
-            
-            // Validate lane boundaries
-            if (targetLane < -1 || targetLane > 1) return;
-            
-            currentLane = targetLane;
-            isAnimating = true;
-            rollDirection = e.key === 'ArrowLeft' ? -1 : 1;
-        });
-
-        // Spawn system
-        function spawnTrain() {
-            const occupiedLanes = new Set(obstacles.map(ob => ob.userData.lane));
-            const availableLanes = [0, 1, 2].filter(lane => !occupiedLanes.has(lane));
-            
-            // Ensure at least one lane remains empty
-            if (availableLanes.length === 0) return;
-            
-            const laneIndex = availableLanes[Math.floor(Math.random() * availableLanes.length)];
-            const train = new THREE.Group();
-            const carCount = 3;
-            const carGeometry = new THREE.BoxGeometry(2, 2, 6);
-            const trainMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x2a2a2a,
-                metalness: 0.5
-            });
-            
-            for(let i = 0; i < carCount; i++) {
-                const car = new THREE.Mesh(carGeometry, trainMaterial);
-                car.position.z = i * -6;
-                car.castShadow = true;
-                train.add(car);
+        const obstacleBox = new THREE.Box3().setFromObject(obstacle);
+        const zDiff = player.position.z - obstacle.position.z;
+        if(new THREE.Box3().setFromObject(player).intersectsBox(obstacleBox)){
+          if(zDiff > -1 && zDiff < 2){
+            createExplosion(player.position);
+            setTimeout(gameOver, 500);
+          } else {
+            if(isAnimating){
+              collisionDuringAnimation = true;
+              if(!chaseActive){
+                chaseActive = true;
+                chaseTimer = 0;
+              }
+            } else {
+              createExplosion(player.position);
+              setTimeout(gameOver, 500);
             }
-            
-            train.position.set(
-                lanes[laneIndex],
-                1,
-                player.position.z - 100
-            );
-            scene.add(train);
-            obstacles.push(train);
-            train.userData.lane = laneIndex;
+          }
         }
-
-        // Game loop
-        function update() {
-            if (!gameActive) return;
-            
-            const delta = clock.getDelta();
-            score += delta * 10;
-
-            // Player movement
-            player.position.x = THREE.MathUtils.lerp(
-                player.position.x, 
-                lanes[currentLane + 1], 
-                isAnimating ? 0.4 : 0.2 // Smoother transition during animation
-            );
-
-            // Jump physics
-            player.position.y = Math.max(1.5, player.position.y - (isJumping ? 0.2 : 0));
-            if (player.position.y === 1.5) isJumping = false;
-
-            // Track movement
-            trackSegments.forEach(segment => {
-                segment.position.z += speed * 50 * delta;
-                if (segment.position.z > 20) {
-                    segment.position.z = -80;
-                }
-            });
-
-            // Train movement
-            obstacles.forEach((obstacle, index) => {
-                obstacle.position.z += speed * 70 * delta;
-                if (obstacle.position.z > 50) {
-                    scene.remove(obstacle);
-                    obstacles.splice(index, 1);
-                }
-            });
-
-            // Collision detection
-            const playerBox = new THREE.Box3().setFromObject(player);
-            obstacles.forEach((obstacle, index) => {
-                const obstacleBox = new THREE.Box3().setFromObject(obstacle);
-                const zDiff = Math.abs(player.position.z - obstacle.position.z);
-                if (playerBox.intersectsBox(obstacleBox)) {
-                    if (zDiff < 2) {
-                        gameOver();
-                    } else if (isAnimating) {
-                        collisionDuringAnimation = true;
-                        prevLane = currentLane + (rollDirection > 0 ? -1 : 1);
-                        // Activate chase cube with closer starting position
-                        chaseActive = true;
-                        chaseCube.visible = true;
-                        chaseCube.position.set(
-                            lanes[currentLane + 1], // Match player's current lane
-                            5, // Lower height
-                            player.position.z - 15 // Start closer but behind
-                        );
-                    }
-                }
-            });
-
-            // Spawning (reduced frequency)
-            if (Math.random() < 0.005) spawnTrain();
-
-            // Camera follow
-            camera.position.z = player.position.z + 15;
-            camera.position.y = 5;
-            camera.lookAt(player.position);
-
-            document.getElementById('ui').textContent = `Score: ${Math.floor(score)}`;
-
-            // Rolling animation
-            if (isAnimating) {
-                rollProgress += delta * 5 * rollDirection;
-                player.rotation.z = rollProgress * rollDirection;
-
-                // Complete animation when reaching ±π
-                if (Math.abs(rollProgress) >= Math.PI) {
-                    rollProgress = 0;
-                    isAnimating = false;
-                    player.rotation.z = 0;
-                    // Force final position
-                    player.position.x = lanes[currentLane + 1];
-                }
-                
-                // Handle collision reversal
-                if (collisionDuringAnimation) {
-                    rollDirection *= -1;
-                    currentLane = prevLane;
-                    collisionDuringAnimation = false;
-                    // Immediately update target position
-                    player.position.x = THREE.MathUtils.lerp(
-                        player.position.x,
-                        lanes[currentLane + 1],
-                        0.8
-                    );
-                }
-            }
-
-            // Chase cube logic
-            if (chaseActive) {
-                chaseTimer += delta;
-                const baseDistance = chaseTimer > 10 ? -5 : -10; // Get closer after 10 seconds
-                const verticalOffset = Math.sin(Date.now() * 0.002) * 2 + 3;
-                
-                // Match player's lane and maintain distance
-                const targetPos = new THREE.Vector3(
-                    lanes[currentLane + 1], 
-                    verticalOffset,
-                    player.position.z + baseDistance // Stay behind player
-                );
-                
-                chaseCube.position.lerp(targetPos, 0.1 * delta * 60);
-                chaseCube.rotation.x += delta;
-                chaseCube.rotation.y += delta;
-
-                // Check proximity for game over
-                const distanceToCube = chaseCube.position.distanceTo(player.position);
-                if (distanceToCube < 4) { // Close enough to kill
-                    const cubeBox = new THREE.Box3().setFromObject(chaseCube);
-                    if (playerBox.intersectsBox(cubeBox)) {
-                        gameOver();
-                    }
-                }
-                
-                if (chaseTimer > 20) {
-                    chaseActive = false;
-                    chaseCube.visible = false;
-                    chaseTimer = 0;
-                }
-            }
-
-            // Always follow player's lane (even when not active)
-            if (!chaseActive && chaseCube) {
-                chaseCube.position.x = lanes[currentLane + 1];
-                chaseCube.position.z = player.position.z - 25; // Safe distance
-            }
+      });
+      
+      if(chaseActive){
+        chaseTimer += delta;
+        const verticalOffset = Math.sin(Date.now() * 0.002) * 2 + 3;
+        const proximity = THREE.MathUtils.lerp(25, 5, chaseTimer / 20);
+        chaseCube.position.set(lanes[currentLane+1], verticalOffset, player.position.z - proximity);
+        chaseCube.rotation.x += delta;
+        chaseCube.rotation.y += delta;
+        if(chaseTimer > 20){
+          chaseActive = false;
+          chaseTimer = 0;
         }
-
-        function gameOver() {
-            gameActive = false;
-            const overlay = document.createElement('div');
-            overlay.style = `
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: rgba(0,0,0,0.7);
-                color: white;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                font-family: Arial;
-                text-align: center;
-                cursor: pointer;
-            `;
-            overlay.innerHTML = `
-                <h1 style="font-size: 3em; margin: 0">GAME OVER</h1>
-                <p style="font-size: 1.5em">Score: ${Math.floor(score)}</p>
-                <p>Click to restart</p>
-            `;
-            document.body.appendChild(overlay);
-            overlay.addEventListener('click', () => location.reload());
+      } else {
+        chaseCube.position.set(lanes[currentLane+1], 5, player.position.z - 25);
+      }
+      
+      if(isAnimating){
+        rollProgress += delta * 5;
+        if(collisionDuringAnimation){
+          player.rotation.z = (Math.PI/4) * rollDirection;
+          player.position.x = lanes[prevLane+1];
+          setTimeout(() => {
+            rollProgress = 0;
+            isAnimating = false;
+            player.rotation.z = 0;
+            currentLane = prevLane;
+            collisionDuringAnimation = false;
+            chaseActive = true;
+            chaseTimer = 0;
+            chaseCube.position.set(lanes[currentLane+1], 5, player.position.z - 35);
+          }, 200);
+        } else {
+          player.rotation.z = rollProgress * rollDirection;
+          if(Math.abs(rollProgress) >= Math.PI){
+            rollProgress = 0;
+            isAnimating = false;
+            player.rotation.z = 0;
+            player.position.x = lanes[currentLane+1];
+          }
         }
+      }
+      
+      camera.position.z = player.position.z + 15;
+      camera.position.y = 5;
+      camera.lookAt(player.position);
+      document.getElementById('ui').textContent = `Score: ${Math.floor(score)}`;
+    }
 
-        function animate() {
-            requestAnimationFrame(animate);
-            update();
-            renderer.render(scene, camera);
-        }
+    function gameOver(){
+      gameActive = false;
+      const overlay = document.createElement('div');
+      overlay.style = `
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background: rgba(0,0,0,0.7);
+        color: white;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-family: Arial;
+        text-align: center;
+        cursor: pointer;
+      `;
+      overlay.innerHTML = `
+        <h1 style="font-size: 3em; margin: 0">GAME OVER</h1>
+        <p style="font-size: 1.5em">Score: ${Math.floor(score)}</p>
+        <p>Click to restart</p>
+      `;
+      document.body.appendChild(overlay);
+      overlay.addEventListener('click', () => location.reload());
+    }
 
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
+    function createExplosion(position){
+      const explosion = new THREE.Group();
+      for(let i = 0; i < 20; i++){
+        const fragment = new THREE.Mesh(
+          new THREE.BoxGeometry(0.3, 0.3, 0.3),
+          new THREE.MeshStandardMaterial({ color: 0xFF0000 })
+        );
+        fragment.position.copy(position);
+        fragment.velocity = new THREE.Vector3(
+          (Math.random() - 0.5) * 10,
+          Math.random() * 10,
+          (Math.random() - 0.5) * 10
+        );
+        explosion.add(fragment);
+      }
+      scene.add(explosion);
+      return explosion;
+    }
 
-        animate();
-    </script>
+    function animate(){
+      requestAnimationFrame(animate);
+      update();
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+  </script>
 </body>
 </html>
