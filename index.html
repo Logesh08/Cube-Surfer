@@ -87,6 +87,7 @@
             track.add(segment);
             trackSegments.push(segment);
 
+            // Add elements as children of the segment
             // Rails
             const railGeometry = new THREE.CylinderGeometry(0.15, 0.15, 20);
             const railMaterial = new THREE.MeshStandardMaterial({ 
@@ -96,8 +97,8 @@
             for(let x of [-5.5, 5.5]) {
                 const rail = new THREE.Mesh(railGeometry, railMaterial);
                 rail.rotation.z = Math.PI/2;
-                rail.position.set(x, 0.15, i * -20);
-                track.add(rail);
+                rail.position.set(x, 0.15, 0);
+                segment.add(rail);
             }
 
             // Lane dividers
@@ -105,8 +106,8 @@
             const dividerMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
             for(let x of [-5, 5]) {
                 const divider = new THREE.Mesh(dividerGeometry, dividerMaterial);
-                divider.position.set(x, 0.1, i * -20);
-                track.add(divider);
+                divider.position.set(x, 0.1, 0);
+                segment.add(divider);
             }
 
             // Wooden sleepers
@@ -117,8 +118,8 @@
             });
             for(let z = -9; z <= 9; z += 2) {
                 const sleeper = new THREE.Mesh(sleeperGeometry, sleeperMaterial);
-                sleeper.position.set(0, -0.05, (i * -20) + z);
-                track.add(sleeper);
+                sleeper.position.set(0, -0.05, z);
+                segment.add(sleeper);
             }
         }
         scene.add(track);
