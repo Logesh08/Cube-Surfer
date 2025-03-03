@@ -140,10 +140,32 @@
         let collisionDuringAnimation = false;
         let prevLane = 0;
 
+        // Chase cube initialization
+        const cubeGeometry = new THREE.BoxGeometry(3, 3, 3);
+        const cubeMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0xff0000,
+            emissive: 0xff4444,
+            metalness: 0.7,
+            roughness: 0.3,
+            emissiveIntensity: 2 // Increased intensity
+        });
+        chaseCube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+        chaseCube.castShadow = true;
+        chaseCube.visible = false;
+        chaseCube.position.set(0, 0, -100);
+        scene.add(chaseCube);
+        
+        // Add cube light
+        const cubeLight = new THREE.PointLight(0xff4444, 50, 20);
+        cubeLight.position.set(0, 0, 0);
+        chaseCube.add(cubeLight);
+
         // Controls
         window.addEventListener('keydown', (e) => {
             if (!gameActive || isAnimating) return;
             const targetLane = currentLane + (e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0);
+            
+            // Validate lane boundaries
             if (targetLane < -1 || targetLane > 1) return;
             
             currentLane = targetLane;
@@ -153,12 +175,11 @@
 
         // Spawn system
         function spawnTrain() {
-            const availableLanes = [0, 1, 2];
-            // Ensure at least one lane is always clear
-            if (obstacles.length > 0) {
-                const lastLane = obstacles[obstacles.length-1].userData.lane;
-                availableLanes.splice(lastLane, 1);
-            }
+            const occupiedLanes = new Set(obstacles.map(ob => ob.userData.lane));
+            const availableLanes = [0, 1, 2].filter(lane => !occupiedLanes.has(lane));
+            
+            // Ensure at least one lane remains empty
+            if (availableLanes.length === 0) return;
             
             const laneIndex = availableLanes[Math.floor(Math.random() * availableLanes.length)];
             const train = new THREE.Group();
@@ -231,13 +252,18 @@
                         gameOver();
                     } else if (isAnimating) {
                         collisionDuringAnimation = true;
-                        prevLane = currentLane + (rollDirection > 0 ? -1 : 1); // Store previous lane
+                        prevLane = currentLane + (rollDirection > 0 ? -1 : 1);
+                        // Activate chase cube
+                        chaseActive = true;
+                        chaseCube.visible = true;
+                        chaseCube.position.copy(player.position)
+                            .add(new THREE.Vector3(0, 10, -30));
                     }
                 }
             });
 
-            // Spawning
-            if (Math.random() < 0.01) spawnTrain();
+            // Spawning (reduced frequency)
+            if (Math.random() < 0.005) spawnTrain();
 
             // Camera follow
             camera.position.z = player.position.z + 15;
@@ -280,13 +306,24 @@
                 if (chaseTimer > 20) {
                     chaseActive = false;
                     chaseTimer = 0;
+                    chaseCube.visible = false;
                 } else {
-                    chaseCube.position.lerpVectors(
-                        chaseCube.position, 
-                        new THREE.Vector3(player.position.x, 2, player.position.z - 5),
-                        0.1
+                    const targetPos = new THREE.Vector3(
+                        player.position.x, 
+                        Math.sin(Date.now() * 0.002) * 2 + 3, // Smoother levitation
+                        player.position.z - 5 // Closer follow distance
                     );
-                    chaseCube.position.y = 2 + Math.sin(Date.now() * 0.002) * 0.5;
+                    chaseCube.position.lerp(targetPos, 0.1 * delta * 60); // Proper frame-rate independent lerp
+                    
+                    // Rotate cube
+                    chaseCube.rotation.x += delta;
+                    chaseCube.rotation.y += delta;
+                    
+                    // Collision check with chase cube
+                    const cubeBox = new THREE.Box3().setFromObject(chaseCube);
+                    if (playerBox.intersectsBox(cubeBox)) {
+                        gameOver();
+                    }
                 }
             }
         }
