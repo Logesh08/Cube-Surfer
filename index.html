@@ -253,11 +253,14 @@
                     } else if (isAnimating) {
                         collisionDuringAnimation = true;
                         prevLane = currentLane + (rollDirection > 0 ? -1 : 1);
-                        // Activate chase cube
+                        // Activate chase cube with closer starting position
                         chaseActive = true;
                         chaseCube.visible = true;
-                        chaseCube.position.copy(player.position)
-                            .add(new THREE.Vector3(0, 10, -30));
+                        chaseCube.position.set(
+                            lanes[currentLane + 1], // Match player's current lane
+                            5, // Lower height
+                            player.position.z - 15 // Start closer but behind
+                        );
                     }
                 }
             });
@@ -303,28 +306,40 @@
             // Chase cube logic
             if (chaseActive) {
                 chaseTimer += delta;
-                if (chaseTimer > 20) {
-                    chaseActive = false;
-                    chaseTimer = 0;
-                    chaseCube.visible = false;
-                } else {
-                    const targetPos = new THREE.Vector3(
-                        player.position.x, 
-                        Math.sin(Date.now() * 0.002) * 2 + 3, // Smoother levitation
-                        player.position.z - 5 // Closer follow distance
-                    );
-                    chaseCube.position.lerp(targetPos, 0.1 * delta * 60); // Proper frame-rate independent lerp
-                    
-                    // Rotate cube
-                    chaseCube.rotation.x += delta;
-                    chaseCube.rotation.y += delta;
-                    
-                    // Collision check with chase cube
+                const baseDistance = chaseTimer > 10 ? -5 : -10; // Get closer after 10 seconds
+                const verticalOffset = Math.sin(Date.now() * 0.002) * 2 + 3;
+                
+                // Match player's lane and maintain distance
+                const targetPos = new THREE.Vector3(
+                    lanes[currentLane + 1], 
+                    verticalOffset,
+                    player.position.z + baseDistance // Stay behind player
+                );
+                
+                chaseCube.position.lerp(targetPos, 0.1 * delta * 60);
+                chaseCube.rotation.x += delta;
+                chaseCube.rotation.y += delta;
+
+                // Check proximity for game over
+                const distanceToCube = chaseCube.position.distanceTo(player.position);
+                if (distanceToCube < 4) { // Close enough to kill
                     const cubeBox = new THREE.Box3().setFromObject(chaseCube);
                     if (playerBox.intersectsBox(cubeBox)) {
                         gameOver();
                     }
                 }
+                
+                if (chaseTimer > 20) {
+                    chaseActive = false;
+                    chaseCube.visible = false;
+                    chaseTimer = 0;
+                }
+            }
+
+            // Always follow player's lane (even when not active)
+            if (!chaseActive && chaseCube) {
+                chaseCube.position.x = lanes[currentLane + 1];
+                chaseCube.position.z = player.position.z - 25; // Safe distance
             }
         }
 
