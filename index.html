@@ -69,21 +69,33 @@
 
         // Track
         const track = new THREE.Group();
-        const trackMaterial = new THREE.MeshStandardMaterial({ color: 0x444444 });
-        const trackWidth = 10;
+        const trackMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+        const trackWidth = 15;
+        const trackHeight = 0.5;
         let trackSegments = [];
 
-        // Generate initial track
+        // Generate initial track with 3 lanes
         for(let i = 0; i < 5; i++) {
             const segment = new THREE.Mesh(
-                new THREE.PlaneGeometry(trackWidth, 20),
+                new THREE.BoxGeometry(trackWidth, trackHeight, 20),
                 trackMaterial
             );
-            segment.rotation.x = -Math.PI / 2;
             segment.position.z = i * -20;
+            segment.position.y = -0.25;
             segment.receiveShadow = true;
             track.add(segment);
             trackSegments.push(segment);
+            
+            // Add train tracks
+            const railGeometry = new THREE.CylinderGeometry(0.1, 0.1, 20);
+            const railMaterial = new THREE.MeshStandardMaterial({ color: 0x666666 });
+            for(let x of [-5, 0, 5]) {
+                const rail = new THREE.Mesh(railGeometry, railMaterial);
+                rail.rotation.z = Math.PI/2;
+                rail.position.set(x, 0.1, i * -20);
+                rail.receiveShadow = true;
+                track.add(rail);
+            }
         }
 
         scene.add(track);
@@ -96,52 +108,84 @@
         let obstacles = [];
         let coins = [];
 
-        // Controls
-        const keys = { ArrowLeft: false, ArrowRight: false, ArrowUp: false };
-        window.addEventListener('keydown', (e) => {
-            if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
+        // Train spawning
+        const trainMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x2a2a2a,
+            metalness: 0.5,
+            roughness: 0.4
         });
-        window.addEventListener('keyup', (e) => {
-            if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
-        });
-
-        // Spawn system
-        function spawnObject(type) {
-            const object = new THREE.Mesh(
-                new THREE.BoxGeometry(1, type === 'coin' ? 0.2 : 2, 1),
-                new THREE.MeshStandardMaterial({
-                    color: type === 'coin' ? 0xFFD700 : 0xFF0000,
-                    metalness: 0.3
-                })
-            );
+        
+        function spawnTrain() {
+            const train = new THREE.Group();
+            const carCount = 3;
+            const carGeometry = new THREE.BoxGeometry(2, 2, 6);
             
-            object.position.set(
+            for(let i = 0; i < carCount; i++) {
+                const car = new THREE.Mesh(carGeometry, trainMaterial);
+                car.position.z = i * -6;
+                car.castShadow = true;
+                train.add(car);
+            }
+            
+            train.position.set(
                 lanes[Math.floor(Math.random() * lanes.length)],
-                type === 'coin' ? 2 : 1,
-                player.position.z - 50
+                1,
+                player.position.z - 100
             );
             
-            scene.add(object);
-            type === 'coin' ? coins.push(object) : obstacles.push(object);
+            scene.add(train);
+            obstacles.push(train);
         }
+
+        // Enhanced controls
+        let moveVelocity = 0;
+        const maxSpeed = 0.3;
+        const acceleration = 0.02;
+        
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft') currentLane = Math.max(-1, currentLane - 1);
+            if (e.key === 'ArrowRight') currentLane = Math.min(1, currentLane + 1);
+            if (e.key === 'ArrowUp' && !isJumping) {
+                player.position.y = 3;
+                isJumping = true;
+            }
+        });
 
         // Game loop
         function update() {
             const delta = clock.getDelta();
             score += delta * 10;
 
-            // Movement
-            if (keys.ArrowLeft && currentLane > -1) currentLane--;
-            if (keys.ArrowRight && currentLane < 1) currentLane++;
-            player.position.x = THREE.MathUtils.lerp(player.position.x, lanes[currentLane + 1], 0.1);
+            // Smooth lane movement
+            player.position.x = THREE.MathUtils.lerp(
+                player.position.x, 
+                lanes[currentLane + 1], 
+                0.2
+            );
+
+            // Train movement
+            obstacles.forEach((obstacle, index) => {
+                obstacle.position.z += speed * 70 * delta;
+                if (obstacle.position.z > 50) {
+                    scene.remove(obstacle);
+                    obstacles.splice(index, 1);
+                }
+            });
+
+            // Enhanced collision detection
+            const playerBox = new THREE.Box3().setFromObject(player);
+            obstacles.forEach((obstacle, index) => {
+                const obstacleBox = new THREE.Box3().setFromObject(obstacle);
+                if (playerBox.intersectsBox(obstacleBox)) {
+                    alert(`Game Over! Score: ${Math.floor(score)}`);
+                    location.reload();
+                }
+            });
+
+            // Spawn trains instead of obstacles
+            if (Math.random() < 0.01) spawnTrain();
 
             // Jumping
-            if (keys.ArrowUp && !isJumping) {
-                player.position.y = 3;
-                isJumping = true;
-            }
-
-            // Gravity
             player.position.y = Math.max(1.5, player.position.y - (isJumping ? 0.2 : 0));
             if (player.position.y === 1.5) isJumping = false;
 
@@ -161,14 +205,6 @@
             // Spawning
             if (Math.random() < 0.02) spawnObject('obstacle');
             if (Math.random() < 0.05) spawnObject('coin');
-
-            // Collision detection
-            obstacles.forEach((obstacle, index) => {
-                if (player.position.distanceTo(obstacle.position) < 2) {
-                    alert(`Game Over! Score: ${Math.floor(score)}`);
-                    location.reload();
-                }
-            });
 
             // Coin collection
             coins.forEach((coin, index) => {
