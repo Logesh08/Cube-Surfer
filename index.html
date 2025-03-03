@@ -15,6 +15,7 @@
             font-family: Arial;
             font-size: 24px;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            pointer-events: none;
         }
     </style>
 </head>
@@ -30,11 +31,11 @@
     </script>
     <script type="module">
         import * as THREE from 'three';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
         const scene = new THREE.Scene();
         const clock = new THREE.Clock();
         let score = 0;
+        let gameActive = true;
         
         // Renderer
         const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -67,14 +68,14 @@
         player.position.y = 1.5;
         scene.add(player);
 
-        // Track
+        // Track System
         const track = new THREE.Group();
-        const trackMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
         const trackWidth = 15;
         const trackHeight = 0.5;
+        const trackMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
         let trackSegments = [];
 
-        // Generate initial track with 3 lanes
+        // Generate track with proper proportions
         for(let i = 0; i < 5; i++) {
             const segment = new THREE.Mesh(
                 new THREE.BoxGeometry(trackWidth, trackHeight, 20),
@@ -85,40 +86,71 @@
             segment.receiveShadow = true;
             track.add(segment);
             trackSegments.push(segment);
-            
-            // Add train tracks
-            const railGeometry = new THREE.CylinderGeometry(0.1, 0.1, 20);
-            const railMaterial = new THREE.MeshStandardMaterial({ color: 0x666666 });
-            for(let x of [-5, 0, 5]) {
+
+            // Rails
+            const railGeometry = new THREE.CylinderGeometry(0.15, 0.15, 20);
+            const railMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x666666,
+                metalness: 0.5
+            });
+            for(let x of [-5.5, 5.5]) {
                 const rail = new THREE.Mesh(railGeometry, railMaterial);
                 rail.rotation.z = Math.PI/2;
-                rail.position.set(x, 0.1, i * -20);
-                rail.receiveShadow = true;
+                rail.position.set(x, 0.15, i * -20);
                 track.add(rail);
             }
-        }
 
+            // Lane dividers
+            const dividerGeometry = new THREE.BoxGeometry(0.1, 0.2, 20);
+            const dividerMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+            for(let x of [-5, 5]) {
+                const divider = new THREE.Mesh(dividerGeometry, dividerMaterial);
+                divider.position.set(x, 0.1, i * -20);
+                track.add(divider);
+            }
+
+            // Wooden sleepers
+            const sleeperGeometry = new THREE.BoxGeometry(14, 0.1, 0.3);
+            const sleeperMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x5d432c,
+                roughness: 0.8
+            });
+            for(let z = -9; z <= 9; z += 2) {
+                const sleeper = new THREE.Mesh(sleeperGeometry, sleeperMaterial);
+                sleeper.position.set(0, -0.05, (i * -20) + z);
+                track.add(sleeper);
+            }
+        }
         scene.add(track);
 
         // Game state
-        let isJumping = false;
         let currentLane = 0;
         const lanes = [-4, 0, 4];
         const speed = 0.2;
         let obstacles = [];
         let coins = [];
+        let isJumping = false;
 
-        // Train spawning
-        const trainMaterial = new THREE.MeshStandardMaterial({ 
-            color: 0x2a2a2a,
-            metalness: 0.5,
-            roughness: 0.4
+        // Controls
+        window.addEventListener('keydown', (e) => {
+            if (!gameActive) return;
+            if (e.key === 'ArrowLeft') currentLane = Math.max(-1, currentLane - 1);
+            if (e.key === 'ArrowRight') currentLane = Math.min(1, currentLane + 1);
+            if (e.key === 'ArrowUp' && !isJumping) {
+                player.position.y = 3;
+                isJumping = true;
+            }
         });
-        
+
+        // Spawn system
         function spawnTrain() {
             const train = new THREE.Group();
             const carCount = 3;
             const carGeometry = new THREE.BoxGeometry(2, 2, 6);
+            const trainMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x2a2a2a,
+                metalness: 0.5
+            });
             
             for(let i = 0; i < carCount; i++) {
                 const car = new THREE.Mesh(carGeometry, trainMaterial);
@@ -132,60 +164,21 @@
                 1,
                 player.position.z - 100
             );
-            
             scene.add(train);
             obstacles.push(train);
         }
 
-        // Enhanced controls
-        let moveVelocity = 0;
-        const maxSpeed = 0.3;
-        const acceleration = 0.02;
-        
-        window.addEventListener('keydown', (e) => {
-            if (e.key === 'ArrowLeft') currentLane = Math.max(-1, currentLane - 1);
-            if (e.key === 'ArrowRight') currentLane = Math.min(1, currentLane + 1);
-            if (e.key === 'ArrowUp' && !isJumping) {
-                player.position.y = 3;
-                isJumping = true;
-            }
-        });
-
         // Game loop
         function update() {
+            if (!gameActive) return;
+            
             const delta = clock.getDelta();
             score += delta * 10;
 
-            // Smooth lane movement
-            player.position.x = THREE.MathUtils.lerp(
-                player.position.x, 
-                lanes[currentLane + 1], 
-                0.2
-            );
+            // Player movement
+            player.position.x = THREE.MathUtils.lerp(player.position.x, lanes[currentLane + 1], 0.2);
 
-            // Train movement
-            obstacles.forEach((obstacle, index) => {
-                obstacle.position.z += speed * 70 * delta;
-                if (obstacle.position.z > 50) {
-                    scene.remove(obstacle);
-                    obstacles.splice(index, 1);
-                }
-            });
-
-            // Enhanced collision detection
-            const playerBox = new THREE.Box3().setFromObject(player);
-            obstacles.forEach((obstacle, index) => {
-                const obstacleBox = new THREE.Box3().setFromObject(obstacle);
-                if (playerBox.intersectsBox(obstacleBox)) {
-                    alert(`Game Over! Score: ${Math.floor(score)}`);
-                    location.reload();
-                }
-            });
-
-            // Spawn trains instead of obstacles
-            if (Math.random() < 0.01) spawnTrain();
-
-            // Jumping
+            // Jump physics
             player.position.y = Math.max(1.5, player.position.y - (isJumping ? 0.2 : 0));
             if (player.position.y === 1.5) isJumping = false;
 
@@ -197,26 +190,61 @@
                 }
             });
 
+            // Train movement
+            obstacles.forEach((obstacle, index) => {
+                obstacle.position.z += speed * 70 * delta;
+                if (obstacle.position.z > 50) {
+                    scene.remove(obstacle);
+                    obstacles.splice(index, 1);
+                }
+            });
+
+            // Collision detection
+            const playerBox = new THREE.Box3().setFromObject(player);
+            obstacles.forEach((obstacle, index) => {
+                const obstacleBox = new THREE.Box3().setFromObject(obstacle);
+                if (playerBox.intersectsBox(obstacleBox)) {
+                    gameOver();
+                }
+            });
+
+            // Spawning
+            if (Math.random() < 0.01) spawnTrain();
+
             // Camera follow
             camera.position.z = player.position.z + 15;
             camera.position.y = 5;
             camera.lookAt(player.position);
 
-            // Spawning
-            if (Math.random() < 0.02) spawnObject('obstacle');
-            if (Math.random() < 0.05) spawnObject('coin');
-
-            // Coin collection
-            coins.forEach((coin, index) => {
-                if (player.position.distanceTo(coin.position) < 1.5) {
-                    scene.remove(coin);
-                    coins.splice(index, 1);
-                    score += 50;
-                }
-            });
-
-            // Update UI
             document.getElementById('ui').textContent = `Score: ${Math.floor(score)}`;
+        }
+
+        function gameOver() {
+            gameActive = false;
+            const overlay = document.createElement('div');
+            overlay.style = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.7);
+                color: white;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                font-family: Arial;
+                text-align: center;
+                cursor: pointer;
+            `;
+            overlay.innerHTML = `
+                <h1 style="font-size: 3em; margin: 0">GAME OVER</h1>
+                <p style="font-size: 1.5em">Score: ${Math.floor(score)}</p>
+                <p>Click to restart</p>
+            `;
+            document.body.appendChild(overlay);
+            overlay.addEventListener('click', () => location.reload());
         }
 
         function animate() {
@@ -225,7 +253,6 @@
             renderer.render(scene, camera);
         }
 
-        // Handle resize
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
