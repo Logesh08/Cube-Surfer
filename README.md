@@ -1,92 +1,85 @@
-# Simple 3D Game with Three.js
+# Cube Surfer - 3D Endless Runner Game
 
 ## Overview
-This project is a simple 3D game built using Three.js, a popular JavaScript library for creating 3D graphics in the browser.
+Cube Surfer is an exciting endless runner game built with Three.js where you control a yellow cube avoiding obstacles while being chased by a mysterious red cube. The game features dynamic lane-switching mechanics, collision detection, and increasing difficulty as you progress.
+
+## Features
+- Endless running gameplay with increasing difficulty
+- Three-lane movement system with smooth transitions
+- Dynamic obstacle generation (trains)
+- Mysterious red cube chase mechanics
+- Real-time score tracking
+- Advanced collision detection
+- Responsive design for all screen sizes
+- Dynamic shadow and lighting effects
+
+## Game Mechanics
+- Use **Left Arrow** and **Right Arrow** keys to switch lanes
+- Avoid hitting trains head-on
+- Watch out for the red cube chasing you
+- Score increases as you survive longer
+- Game ends on collision with obstacles
 
 ## Prerequisites
-- Basic knowledge of HTML, CSS, and JavaScript
-- A code editor (e.g., Visual Studio Code)
-- A web browser (e.g., Chrome, Firefox)
+- Modern web browser with WebGL support
+- Basic understanding of HTML and JavaScript
+- Local development server (optional)
 
-## Getting Started
+## Installation & Setup
 
-### 1. Set Up Your Project
-Create a new directory for your project and navigate into it:
-
-```bash
-mkdir simple-3d-game
-cd simple-3d-game
-```
-
-### 2. Create HTML File
-Create an `index.html` file in your project directory:
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple 3D Game</title>
-    <style>
-        body { margin: 0; }
-        canvas { display: block; }
-    </style>
-</head>
-<body>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="app.js"></script>
-</body>
-</html>
-```
-
-### 3. Create JavaScript File
-Create an `app.js` file in your project directory. This file will contain the main logic for your game.
-
-```javascript
-// app.js
-import * as THREE from 'three';
-
-// Set up the scene, camera, and renderer
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer();
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
-
-// Add a simple cube
-const geometry = new THREE.BoxGeometry();
-const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-const cube = new THREE.Mesh(geometry, material);
-scene.add(cube);
-
-// Set camera position
-camera.position.z = 5;
-
-// Animation loop
-function animate() {
-    requestAnimationFrame(animate);
-    cube.rotation.x += 0.01;
-    cube.rotation.y += 0.01;
-    renderer.render(scene, camera);
-}
-animate();
-```
-
-### 4. Run Your Game
-You can use a simple HTTP server to run your game. If you have Python installed, you can run:
+1. Clone the repository:
 
 ```bash
-# For Python 3.x
-python -m http.server
+git clone https://github.com/yourusername/cube-surfer.git
+cd cube-surfer
 ```
 
-Then, open your browser and navigate to `http://localhost:8000`.
+2. Start a local server:
+   - Using Python 3:
+   ```bash
+   python -m http.server
+   ```
+   - Using Node.js:
+   ```bash
+   npx http-server
+   ```
 
-## Next Steps
-- Explore Three.js documentation to learn more about adding lights, textures, and more complex geometries.
-- Consider adding user controls to interact with the 3D scene.
-- Experiment with different shapes and animations to enhance your game.
+3. Open your browser and navigate to:
+   - `http://localhost:8000` (Python)
+   - `http://localhost:8080` (Node.js)
+
+## Technical Details
+- Built with Three.js for 3D rendering
+- Uses WebGL for hardware acceleration
+- Implements requestAnimationFrame for smooth animations
+- Features dynamic obstacle spawning system
+- Includes advanced collision detection using Three.js Box3
+
+## Performance Optimization
+- Efficient obstacle pooling system
+- Optimized track segment recycling
+- Minimal DOM updates for score display
+- Hardware-accelerated animations
+
+## Browser Compatibility
+- Chrome (recommended)
+- Firefox
+- Safari
+- Edge
+- Any modern browser with WebGL support
+
+## Contributing
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 ## License
-This project is licensed under the MIT License.
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Acknowledgments
+- Three.js team for the amazing 3D library
+- Inspiration from classic endless runner games
+- Community feedback and contributions
+
