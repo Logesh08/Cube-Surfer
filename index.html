@@ -139,30 +139,33 @@
       // Use a subtle color palette for jump obstacles.
       const trainColors = [0x5A7D9A, 0x9A7D5A, 0x7D9A5A, 0x9A5A7D];
 
-      // Spawn a jump obstacle (train-like obstacle).
+      // Spawn a jump obstacle.
       function spawnJumpObstacle() {
-        const obstacleGroup = new THREE.Group();
-        const carCount = Math.floor(Math.random() * 3) + 2; // 2 to 4 cars.
-        const carWidth = 3, carHeight = 2, carLength = 8;
-        const gap = 0.5;
-        const color = trainColors[Math.floor(Math.random() * trainColors.length)];
-        const carMaterial = new THREE.MeshStandardMaterial({ color: color });
-        const carGeometry = new THREE.BoxGeometry(carWidth, carHeight, carLength);
-        for (let i = 0; i < carCount; i++) {
-          const car = new THREE.Mesh(carGeometry, carMaterial);
-          car.castShadow = true;
-          car.position.z = -i * (carLength + gap);
-          obstacleGroup.add(car);
-        }
-        obstacleGroup.userData.carCount = carCount;
-        obstacleGroup.userData.carLength = carLength;
-        obstacleGroup.userData.gap = gap;
+        // Create a group for the jump obstacle.
+        const jumpGroup = new THREE.Group();
+        // Top bar dimensions: same as your roll obstacle’s top bar.
+        const barWidth = 2, barHeight = 1.5, barDepth = 1;
+        const barMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
+        const barGeometry = new THREE.BoxGeometry(barWidth, barHeight, barDepth);
+        const topBar = new THREE.Mesh(barGeometry, barMaterial);
+        topBar.castShadow = true;
+        // Set the top bar's position in group space.
+        // (This is the same as in your roll obstacle code.)
+        topBar.position.set(0, -0.2, 0);
+        jumpGroup.add(topBar);
+        
+        // We are not adding any supports for the jump obstacle.
+        
+        // Now, position the group so that the top of the bar (which is at y = topBar.position.y + barHeight/2)
+        // is flush with the ground. In this case, topBar's top is at: -0.4 + (1.2/2) = 0.2.
+        // If you want that top to be at ground level (say y = 1.0, given that the player's bottom is around y = 1.0),
+        // then set the group's y so that  group.position.y + 0.2 = 1.0. That is, group.position.y = 0.8.
         const laneIndex = Math.floor(Math.random() * lanes.length);
-        obstacleGroup.position.set(lanes[laneIndex], normalY, -100);
-        obstacleGroup.userData.lane = laneIndex;
-        obstacleGroup.userData.type = "jumpObstacle";
-        obstacles.push(obstacleGroup);
-        scene.add(obstacleGroup);
+        jumpGroup.position.set(lanes[laneIndex], 0.8, -100);
+        jumpGroup.userData.lane = laneIndex;
+        jumpGroup.userData.type = "jumpObstacle";
+        obstacles.push(jumpGroup);
+        scene.add(jumpGroup);
       }
 
       // Spawn a roll obstacle (taller barrier) with side supports.
@@ -219,7 +222,8 @@
         if (Math.random() < 0.5) {
           spawnJumpObstacle();
         } else {
-          spawnRollObstacle();
+          spawnJumpObstacle();
+        //   spawnRollObstacle();
         }
       }
 
