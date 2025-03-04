@@ -119,7 +119,7 @@
         // Add lane dividers as flat planes.
         const dividerMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide });
         const dividerGeo = new THREE.PlaneGeometry(0.1, segmentLength - 2);
-        dividerGeo.rotateY(-Math.PI / 2); // lay flat on the track
+        dividerGeo.rotateY(-Math.PI / 2);
         const divider1 = new THREE.Mesh(dividerGeo, dividerMaterial);
         divider1.position.set(-2, 0.02, 0.2);
         const divider2 = new THREE.Mesh(dividerGeo, dividerMaterial);
@@ -136,30 +136,33 @@
       let obstacleSpawnTimer = 0;
 
       // Color palettes.
-      const jumpObstacleColors = [0x5A7D9A, 0x9A7D5A, 0x7D9A5A, 0x9A5A7D];
+      const trainColors = [0x5A7D9A, 0x9A7D5A, 0x7D9A5A, 0x9A5A7D];
       const rollObstacleColors = [0x7A8C8A, 0x8C7A8C, 0x7A8C7A, 0x8C8C7A];
 
-      // Spawn a jump obstacle.
-      function spawnJumpObstacle() {
-        const jumpGroup = new THREE.Group();
-        // Top bar dimensions: use similar dimensions to your roll obstacle’s top bar.
-        const barWidth = 2, barHeight = 1.5, barDepth = 1;
-        const color = jumpObstacleColors[Math.floor(Math.random() * jumpObstacleColors.length)];
-        const barMaterial = new THREE.MeshStandardMaterial({ color: color });
-        const barGeometry = new THREE.BoxGeometry(barWidth, barHeight, barDepth);
-        const topBar = new THREE.Mesh(barGeometry, barMaterial);
-        topBar.castShadow = true;
-        // Adjust position so that the top is flush with the ground.
-        topBar.position.set(0, -0.2, 0);
-        jumpGroup.add(topBar);
-        
+      // Spawn a train (jump obstacle) – full train block.
+      function spawnTrain() {
+        const trainGroup = new THREE.Group();
+        const carCount = Math.floor(Math.random() * 7) + 2; // 2 to 8 cars.
+        const carWidth = 3, carHeight = 2, carLength = 8;
+        const gap = 0.5;
+        const color = trainColors[Math.floor(Math.random() * trainColors.length)];
+        const carMaterial = new THREE.MeshStandardMaterial({ color: color });
+        const carGeometry = new THREE.BoxGeometry(carWidth, carHeight, carLength);
+        for (let i = 0; i < carCount; i++) {
+          const car = new THREE.Mesh(carGeometry, carMaterial);
+          car.castShadow = true;
+          car.position.z = -i * (carLength + gap);
+          trainGroup.add(car);
+        }
+        trainGroup.userData.carCount = carCount;
+        trainGroup.userData.carLength = carLength;
+        trainGroup.userData.gap = gap;
         const laneIndex = Math.floor(Math.random() * lanes.length);
-        jumpGroup.position.set(lanes[laneIndex], 0.8, -100);
-        jumpGroup.userData.lane = laneIndex;
-        jumpGroup.userData.type = "jumpObstacle";
-        
-        obstacles.push(jumpGroup);
-        scene.add(jumpGroup);
+        trainGroup.position.set(lanes[laneIndex], normalY, -100);
+        trainGroup.userData.lane = laneIndex;
+        trainGroup.userData.type = "train";
+        obstacles.push(trainGroup);
+        scene.add(trainGroup);
       }
 
       // Spawn a roll obstacle (with supports).
@@ -190,15 +193,14 @@
         rollGroup.position.set(lanes[laneIndex], 2.5, -100);
         rollGroup.userData.lane = laneIndex;
         rollGroup.userData.type = "rollObstacle";
-        
         obstacles.push(rollGroup);
         scene.add(rollGroup);
       }
 
-      // Randomly choose which obstacle to spawn.
+      // spawnObstacle now randomly chooses between train and roll obstacle.
       function spawnObstacle() {
         if (Math.random() < 0.5) {
-          spawnJumpObstacle();
+          spawnTrain();
         } else {
           spawnRollObstacle();
         }
@@ -206,7 +208,7 @@
 
       // ----- Input Handling -----
       window.addEventListener("keydown", (e) => {
-        // Lane change controls:
+        // Lane change:
         if (!gameActive || isChangingLane) return;
         if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
           prevLane = currentLane;
@@ -326,7 +328,7 @@
         for (let i = obstacles.length - 1; i >= 0; i--) {
           let obs = obstacles[i];
           obs.position.z += gameSpeed * delta;
-          if (obs.userData.type === "jumpObstacle") {
+          if (obs.userData.type === "train") {
             const carCount = obs.userData.carCount;
             const carLength = obs.userData.carLength;
             const gap = obs.userData.gap;
@@ -351,7 +353,8 @@
         // Collision detection.
         let collidedObs = checkCollisions();
         if (collidedObs) {
-          if (collidedObs.userData.type === "jumpObstacle") {
+          if (collidedObs.userData.type === "train") {
+            // For train obstacles, if the player is switching lanes and far from the center, treat it as a side hit.
             const obstacleLaneX = lanes[collidedObs.userData.lane];
             const diffX = Math.abs(player.position.x - obstacleLaneX);
             if (isChangingLane && diffX > 0.3) {
