@@ -42,7 +42,6 @@
       renderer.shadowMap.enabled = true;
       document.body.appendChild(renderer.domElement);
 
-      // Camera is behind the player so the player is in view.
       const camera = new THREE.PerspectiveCamera(
         75,
         window.innerWidth/window.innerHeight,
@@ -59,26 +58,24 @@
       directionalLight.castShadow = true;
       scene.add(directionalLight);
 
-      // Define lanes: indices 0,1,2 map to x positions [-4, 0, 4].
       const lanes = [-4, 0, 4];
       let currentLane = 1;
       let targetLane = currentLane;
       let isChangingLane = false;
       let prevLane = currentLane;
-      // Timer for delaying red cube's x-update during lane change.
       let laneChangeTimer = 0;
-      const laneChangeDelay = 0.5; // seconds
+      const laneChangeDelay = 0.5;
 
-      // Follow offsets for red cube.
+      // Set your desired offsets.
       const defaultFollowOffset = 6; // when not in near mode
-      const nearFollowOffset = 3;     // when a side collision occurs
+      const nearFollowOffset = 3;    // when a side collision occurs
+      // We'll animate the red cube's offset smoothly.
+      let chaseOffsetZCurrent = defaultFollowOffset;
 
-      // Red cube near state variables.
       let redCubeNearActive = false;
       let redCubeNearTimer = 0;
-      const redCubeNearDuration = 20; // seconds
+      const redCubeNearDuration = 20;
 
-      // Create the player (yellow cube).
       const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
       const playerMaterial = new THREE.MeshStandardMaterial({ color: 0xFFD700 });
       const player = new THREE.Mesh(playerGeometry, playerMaterial);
@@ -86,7 +83,6 @@
       player.castShadow = true;
       scene.add(player);
 
-      // Create the red cube (chase cube) – smaller.
       const chaseGeometry = new THREE.BoxGeometry(1, 1, 1);
       const chaseMaterial = new THREE.MeshStandardMaterial({
         color: 0xff0000,
@@ -97,7 +93,6 @@
       chaseCube.castShadow = true;
       scene.add(chaseCube);
 
-      // Build a continuous track using multiple segments.
       const trackGroup = new THREE.Group();
       const numSegments = 20;
       const segmentLength = 20;
@@ -115,10 +110,9 @@
       }
       scene.add(trackGroup);
 
-      // Obstacles (trains)
       let obstacles = [];
       let obstacleSpawnTimer = 0;
-      const obstacleSpawnInterval = 2; // seconds
+      const obstacleSpawnInterval = 2;
 
       function spawnTrain() {
         const laneIndex = Math.floor(Math.random() * lanes.length);
@@ -126,14 +120,12 @@
         const trainMaterial = new THREE.MeshStandardMaterial({ color: 0x2a2a2a });
         const train = new THREE.Mesh(trainGeometry, trainMaterial);
         train.castShadow = true;
-        // Spawn ahead of the player at z = -100.
         train.position.set(lanes[laneIndex], 1.5, -100);
         train.userData.lane = laneIndex;
         obstacles.push(train);
         scene.add(train);
       }
 
-      // Listen for left/right arrow keys.
       window.addEventListener("keydown", (e) => {
         if (!gameActive || isChangingLane) return;
         prevLane = currentLane;
@@ -148,7 +140,6 @@
         }
       });
 
-      // Simple collision detection using bounding boxes.
       function checkCollisions() {
         const playerBox = new THREE.Box3().setFromObject(player);
         for (let obs of obstacles) {
@@ -166,8 +157,7 @@
         location.reload();
       }
 
-      // Lane change animation speed for the yellow cube.
-      const laneChangeSpeed = 10; // units per second
+      const laneChangeSpeed = 10;
 
       function animate() {
         requestAnimationFrame(animate);
@@ -177,10 +167,8 @@
         score += delta * 10;
         document.getElementById("ui").textContent = "Score: " + Math.floor(score);
 
-        // If a lane change is in progress, update the timer.
         if (isChangingLane) {
           laneChangeTimer += delta;
-          // Update yellow cube's x-position gradually toward target.
           const targetX = lanes[targetLane];
           const diff = targetX - player.position.x;
           if (Math.abs(diff) < 0.05) {
@@ -192,14 +180,12 @@
           }
         }
 
-        // Update red cube's x-position: it follows yellow after the 0.5s delay.
         if (isChangingLane && laneChangeTimer < laneChangeDelay) {
           chaseCube.position.x = lanes[prevLane];
         } else {
           chaseCube.position.x = player.position.x;
         }
 
-        // Update track segments.
         trackGroup.children.forEach(segment => {
           segment.position.z += 30 * delta;
           if (segment.position.z > 20) {
@@ -207,7 +193,6 @@
           }
         });
 
-        // Move obstacles (trains) toward the player.
         for (let i = obstacles.length - 1; i >= 0; i--) {
           let obs = obstacles[i];
           obs.position.z += 30 * delta;
@@ -217,53 +202,44 @@
           }
         }
 
-        // Spawn new obstacles periodically.
         obstacleSpawnTimer += delta;
         if (obstacleSpawnTimer > obstacleSpawnInterval) {
           spawnTrain();
           obstacleSpawnTimer = 0;
         }
 
-        // Collision detection.
         let collidedObs = checkCollisions();
         if (collidedObs) {
-          // Check horizontal difference between player's x and the obstacle's lane center.
           const obstacleLaneX = lanes[collidedObs.userData.lane];
           const diffX = Math.abs(player.position.x - obstacleLaneX);
-          // If we're in the middle of a lane change and the difference is significant, treat as side collision.
           if (isChangingLane && diffX > 0.3) {
-            // If already in near mode, a second side hit means game over.
             if (redCubeNearActive) {
               gameOver();
             } else {
               redCubeNearActive = true;
               redCubeNearTimer = 0;
-              // Revert lane change.
               targetLane = prevLane;
               isChangingLane = true;
               laneChangeTimer = 0;
             }
           } else {
-            // Head-on collision.
             gameOver();
           }
         }
 
-        // If red cube is in near mode, update its timer.
         if (redCubeNearActive) {
           redCubeNearTimer += delta;
-          // If 20 seconds have passed, exit near mode.
           if (redCubeNearTimer >= redCubeNearDuration) {
             redCubeNearActive = false;
           }
         }
 
-        // Determine the z-offset for the red cube based on state.
-        const chaseOffsetZ = redCubeNearActive ? nearFollowOffset : defaultFollowOffset;
-        // Set the red cube's position relative to the yellow cube.
-        chaseCube.position.set(chaseCube.position.x, player.position.y, player.position.z + chaseOffsetZ);
+        // Determine target offset based on current state.
+        const chaseOffsetZTarget = redCubeNearActive ? nearFollowOffset : defaultFollowOffset;
+        // Smoothly animate the z offset.
+        chaseOffsetZCurrent = THREE.MathUtils.lerp(chaseOffsetZCurrent, chaseOffsetZTarget, delta * 5);
+        chaseCube.position.set(chaseCube.position.x, player.position.y, player.position.z + chaseOffsetZCurrent);
 
-        // Update the camera to follow the yellow cube.
         camera.position.x = player.position.x;
         camera.position.z = player.position.z + 10;
         camera.lookAt(player.position);
