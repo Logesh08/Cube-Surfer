@@ -134,89 +134,63 @@
       // ----- Obstacles -----
       let obstacles = [];
       let obstacleSpawnTimer = 0;
-      const obstacleSpawnInterval = 2; // seconds
 
-      // Use a subtle color palette for jump obstacles.
-      const trainColors = [0x5A7D9A, 0x9A7D5A, 0x7D9A5A, 0x9A5A7D];
+      // Color palettes.
       const jumpObstacleColors = [0x5A7D9A, 0x9A7D5A, 0x7D9A5A, 0x9A5A7D];
       const rollObstacleColors = [0x7A8C8A, 0x8C7A8C, 0x7A8C7A, 0x8C8C7A];
 
       // Spawn a jump obstacle.
       function spawnJumpObstacle() {
-        // Create a group for the jump obstacle.
         const jumpGroup = new THREE.Group();
-        // Top bar dimensions: same as your roll obstacle’s top bar.
+        // Top bar dimensions: use similar dimensions to your roll obstacle’s top bar.
         const barWidth = 2, barHeight = 1.5, barDepth = 1;
         const color = jumpObstacleColors[Math.floor(Math.random() * jumpObstacleColors.length)];
         const barMaterial = new THREE.MeshStandardMaterial({ color: color });
         const barGeometry = new THREE.BoxGeometry(barWidth, barHeight, barDepth);
         const topBar = new THREE.Mesh(barGeometry, barMaterial);
         topBar.castShadow = true;
-        // Set the top bar's position in group space.
-        // (This is the same as in your roll obstacle code.)
+        // Adjust position so that the top is flush with the ground.
         topBar.position.set(0, -0.2, 0);
         jumpGroup.add(topBar);
         
-        // We are not adding any supports for the jump obstacle.
-        
-        // Now, position the group so that the top of the bar (which is at y = topBar.position.y + barHeight/2)
-        // is flush with the ground. In this case, topBar's top is at: -0.4 + (1.2/2) = 0.2.
-        // If you want that top to be at ground level (say y = 1.0, given that the player's bottom is around y = 1.0),
-        // then set the group's y so that  group.position.y + 0.2 = 1.0. That is, group.position.y = 0.8.
         const laneIndex = Math.floor(Math.random() * lanes.length);
         jumpGroup.position.set(lanes[laneIndex], 0.8, -100);
         jumpGroup.userData.lane = laneIndex;
         jumpGroup.userData.type = "jumpObstacle";
+        
         obstacles.push(jumpGroup);
         scene.add(jumpGroup);
       }
 
-      // Spawn a roll obstacle (taller barrier) with side supports.
+      // Spawn a roll obstacle (with supports).
       function spawnRollObstacle() {
-        // Create a group for the roll obstacle.
         const rollGroup = new THREE.Group();
         const color = rollObstacleColors[Math.floor(Math.random() * rollObstacleColors.length)];
-        // Top bar dimensions: reduce height by half (height 1 instead of 2), width 2, depth 1.
         const barWidth = 2, barHeight = 1.2, barDepth = 1;
         const barMaterial = new THREE.MeshStandardMaterial({ color: color });
         const barGeometry = new THREE.BoxGeometry(barWidth, barHeight, barDepth);
         const topBar = new THREE.Mesh(barGeometry, barMaterial);
         topBar.castShadow = true;
-        // In group space, topBar is centered at (0,0,0). Its bottom is at y = -0.5.
-        // Modify the starting position of the top bar.
-        // By default, it is centered at (0, 0, 0) in rollGroup space.
-        // For example, shifting it upward by 0.3 units:
         topBar.position.set(0, -0.4, 0);
         rollGroup.add(topBar);
 
-        // Create supports (pillars) for the sides.
-        // Dimensions: width 0.3, height 1.5, depth 0.3.
         const supportWidth = 0.3, supportHeight = 1.5, supportDepth = 0.3;
         const supportMaterial = new THREE.MeshStandardMaterial({ color: color });
         const supportGeometry = new THREE.BoxGeometry(supportWidth, supportHeight, supportDepth);
-        // Position supports so that their top touches the bottom of the top bar.
-        // Top of support = support center y + supportHeight/2.
-        // We want support center y = -0.5 - supportHeight/2 = -0.5 - 0.75 = -1.25.
         const leftSupport = new THREE.Mesh(supportGeometry, supportMaterial);
         leftSupport.castShadow = true;
         const rightSupport = new THREE.Mesh(supportGeometry, supportMaterial);
         rightSupport.castShadow = true;
-        // Place supports at left and right edges of the top bar.
-        // top bar width is 2, so half-width is 1. Adjust supports center x to be 1 - (supportWidth/2) = 1 - 0.15 = 0.85.
         leftSupport.position.set(-0.85, -1.25, 0);
         rightSupport.position.set(0.85, -1.25, 0);
         rollGroup.add(leftSupport);
         rollGroup.add(rightSupport);
 
-        // Position the roll group in world space.
-        // We want the roll obstacle to be lower than before. Previously, roll obstacles were at y=3.
-        // Now, set group.position.y such that the top bar is at about 2.5.
-        // In group space, top bar center is at y=0, so set group.position.y = 2.5.
-        // Spawn in a random lane.
         const laneIndex = Math.floor(Math.random() * lanes.length);
         rollGroup.position.set(lanes[laneIndex], 2.5, -100);
         rollGroup.userData.lane = laneIndex;
         rollGroup.userData.type = "rollObstacle";
+        
         obstacles.push(rollGroup);
         scene.add(rollGroup);
       }
@@ -271,17 +245,17 @@
       function checkCollisions() {
         const playerBox = new THREE.Box3().setFromObject(player);
         for (let obs of obstacles) {
-            // If the obstacle is a roll obstacle and the player is crouching, skip collision detection.
-            if (obs.userData.type === "rollObstacle" && isCrouching) {
+          // If roll obstacle and player is crouching, ignore collision.
+          if (obs.userData.type === "rollObstacle" && isCrouching) {
             continue;
-            }
-            const obsBox = new THREE.Box3().setFromObject(obs);
-            if (playerBox.intersectsBox(obsBox)) {
+          }
+          const obsBox = new THREE.Box3().setFromObject(obs);
+          if (playerBox.intersectsBox(obsBox)) {
             return obs;
-            }
+          }
         }
         return null;
-        }
+      }
 
       function gameOver() {
         gameActive = false;
@@ -291,11 +265,22 @@
 
       const laneChangeSpeed = 10; // units per second
 
+      // ----- Dynamic Difficulty Variables -----
+      const baseSpeed = 30;
+      const baseSpawnInterval = 2; // seconds
+
       // ----- Main Animation Loop -----
       function animate() {
         requestAnimationFrame(animate);
         const delta = clock.getDelta();
         if (!gameActive) return;
+
+        const elapsedTime = clock.getElapsedTime();
+        // Increase game speed gradually.
+        const gameSpeed = baseSpeed + elapsedTime * 0.5;
+        // Decrease spawn interval gradually, but not below 0.5 sec.
+        let currentSpawnInterval = baseSpawnInterval / (1 + elapsedTime / 60);
+        currentSpawnInterval = Math.max(currentSpawnInterval, 0.5);
 
         score += delta * 10;
         document.getElementById("ui").textContent = "Score: " + Math.floor(score);
@@ -314,7 +299,7 @@
           }
         }
 
-        // Animate red cube's x-position smoothly.
+        // Animate red cube's x-position.
         let targetXForChase = (isChangingLane && laneChangeTimer < laneChangeDelay) ? lanes[prevLane] : player.position.x;
         chaseXCurrent = THREE.MathUtils.lerp(chaseXCurrent, targetXForChase, delta * 5);
 
@@ -331,7 +316,7 @@
 
         // Update track segments.
         trackGroup.children.forEach(segment => {
-          segment.position.z += 30 * delta;
+          segment.position.z += gameSpeed * delta;
           if (segment.position.z > 20) {
             segment.position.z -= totalTrackLength;
           }
@@ -340,7 +325,7 @@
         // Move obstacles toward the player.
         for (let i = obstacles.length - 1; i >= 0; i--) {
           let obs = obstacles[i];
-          obs.position.z += 30 * delta;
+          obs.position.z += gameSpeed * delta;
           if (obs.userData.type === "jumpObstacle") {
             const carCount = obs.userData.carCount;
             const carLength = obs.userData.carLength;
@@ -358,7 +343,7 @@
         }
 
         obstacleSpawnTimer += delta;
-        if (obstacleSpawnTimer > obstacleSpawnInterval) {
+        if (obstacleSpawnTimer > currentSpawnInterval) {
           spawnObstacle();
           obstacleSpawnTimer = 0;
         }
