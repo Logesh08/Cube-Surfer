@@ -32,6 +32,7 @@
     <script type="module">
       import * as THREE from 'three';
 
+      // ----- Scene Setup -----
       const scene = new THREE.Scene();
       const clock = new THREE.Clock();
       let score = 0;
@@ -58,6 +59,7 @@
       directionalLight.castShadow = true;
       scene.add(directionalLight);
 
+      // ----- Game Variables -----
       const lanes = [-4, 0, 4];
       let currentLane = 1;
       let targetLane = currentLane;
@@ -66,11 +68,10 @@
       let laneChangeTimer = 0;
       const laneChangeDelay = 0.5; // seconds
 
-      // Offsets for red cube
+      // Red cube follow offsets
       const defaultFollowOffset = 6;
       const nearFollowOffset = 3;
       let chaseOffsetZCurrent = defaultFollowOffset;
-
       let redCubeNearActive = false;
       let redCubeNearTimer = 0;
       const redCubeNearDuration = 20; // seconds
@@ -78,6 +79,7 @@
       // Animate red cube's x-position.
       let chaseXCurrent = lanes[currentLane];
 
+      // ----- Player & Red Cube (Chase Cube) -----
       const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
       const playerMaterial = new THREE.MeshStandardMaterial({ color: 0xFFD700 });
       const player = new THREE.Mesh(playerGeometry, playerMaterial);
@@ -85,13 +87,14 @@
       player.castShadow = true;
       scene.add(player);
 
-      // Updated red cube material: removed strong emissive properties
+      // Updated red cube: using a standard material so lighting/shadows define its edges.
       const chaseGeometry = new THREE.BoxGeometry(1, 1, 1);
       const chaseMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
       const chaseCube = new THREE.Mesh(chaseGeometry, chaseMaterial);
       chaseCube.castShadow = true;
       scene.add(chaseCube);
 
+      // ----- Track Creation with Lane Dividers -----
       const trackGroup = new THREE.Group();
       const numSegments = 20;
       const segmentLength = 20;
@@ -105,26 +108,58 @@
         segment.position.z = -segmentLength/2 - i * segmentLength;
         segment.position.y = 0;
         segment.receiveShadow = true;
+        // Add lane dividers as flat planes.
+        const dividerMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+        const dividerGeo = new THREE.PlaneGeometry(0.1, segmentLength - 2);
+        dividerGeo.rotateX(-Math.PI / 2); // lay flat on the track
+        const divider1 = new THREE.Mesh(dividerGeo, dividerMaterial);
+        divider1.position.set(-2, 0.02, 0);
+        const divider2 = new THREE.Mesh(dividerGeo, dividerMaterial);
+        divider2.position.set(2, 0.02, 0);
+        segment.add(divider1);
+        segment.add(divider2);
+
         trackGroup.add(segment);
       }
       scene.add(trackGroup);
 
+      // ----- Obstacles (Trains) -----
       let obstacles = [];
       let obstacleSpawnTimer = 0;
       const obstacleSpawnInterval = 2; // seconds
 
+      // Use a new subtle color palette for trains (feel free to adjust)
+      const trainColors = [0x5A7D9A, 0x9A7D5A, 0x7D9A5A, 0x9A5A7D];
+
       function spawnTrain() {
+        // Create a train group consisting of 2–4 cars.
+        const trainGroup = new THREE.Group();
+        const carCount = Math.floor(Math.random() * 3) + 2; // 2 to 4 cars.
+        const carWidth = 3, carHeight = 2, carLength = 8;
+        const gap = 0.5; // gap between cars
+        const color = trainColors[Math.floor(Math.random() * trainColors.length)];
+        const carMaterial = new THREE.MeshStandardMaterial({ color: color });
+        const carGeometry = new THREE.BoxGeometry(carWidth, carHeight, carLength);
+        for (let i = 0; i < carCount; i++) {
+          const car = new THREE.Mesh(carGeometry, carMaterial);
+          car.castShadow = true;
+          // Position each car so that the first car is at 0 and the rest extend backward.
+          car.position.z = -i * (carLength + gap);
+          trainGroup.add(car);
+        }
+        // Store train dimensions for removal logic.
+        trainGroup.userData.carCount = carCount;
+        trainGroup.userData.carLength = carLength;
+        trainGroup.userData.gap = gap;
+        // Spawn in a random lane.
         const laneIndex = Math.floor(Math.random() * lanes.length);
-        const trainGeometry = new THREE.BoxGeometry(3, 2, 6);
-        const trainMaterial = new THREE.MeshStandardMaterial({ color: 0x2a2a2a });
-        const train = new THREE.Mesh(trainGeometry, trainMaterial);
-        train.castShadow = true;
-        train.position.set(lanes[laneIndex], 1.5, -100);
-        train.userData.lane = laneIndex;
-        obstacles.push(train);
-        scene.add(train);
+        trainGroup.position.set(lanes[laneIndex], 1.5, -100);
+        trainGroup.userData.lane = laneIndex;
+        obstacles.push(trainGroup);
+        scene.add(trainGroup);
       }
 
+      // ----- Input Handling -----
       window.addEventListener("keydown", (e) => {
         if (!gameActive || isChangingLane) return;
         prevLane = currentLane;
@@ -139,6 +174,7 @@
         }
       });
 
+      // ----- Collision Detection & Game Over -----
       function checkCollisions() {
         const playerBox = new THREE.Box3().setFromObject(player);
         for (let obs of obstacles) {
@@ -158,6 +194,7 @@
 
       const laneChangeSpeed = 10; // units per second
 
+      // ----- Main Animation Loop -----
       function animate() {
         requestAnimationFrame(animate);
         const delta = clock.getDelta();
@@ -166,6 +203,7 @@
         score += delta * 10;
         document.getElementById("ui").textContent = "Score: " + Math.floor(score);
 
+        // Handle yellow cube lane change.
         if (isChangingLane) {
           laneChangeTimer += delta;
           const targetX = lanes[targetLane];
@@ -183,6 +221,7 @@
         let targetXForChase = (isChangingLane && laneChangeTimer < laneChangeDelay) ? lanes[prevLane] : player.position.x;
         chaseXCurrent = THREE.MathUtils.lerp(chaseXCurrent, targetXForChase, delta * 5);
 
+        // Update track segments.
         trackGroup.children.forEach(segment => {
           segment.position.z += 30 * delta;
           if (segment.position.z > 20) {
@@ -190,10 +229,17 @@
           }
         });
 
+        // Move obstacles (trains) toward the player.
         for (let i = obstacles.length - 1; i >= 0; i--) {
           let obs = obstacles[i];
           obs.position.z += 30 * delta;
-          if (obs.position.z > 10) {
+          // For train groups, remove only when the entire train is off-screen.
+          const carCount = obs.userData.carCount;
+          const carLength = obs.userData.carLength;
+          const gap = obs.userData.gap;
+          // The rear of the train is at: obs.position.z + (min local z)
+          // The minimum local z is - (carCount - 1) * (carLength + gap)
+          if (obs.position.z - ((carCount - 1) * (carLength + gap)) > 10) {
             scene.remove(obs);
             obstacles.splice(i, 1);
           }
@@ -205,6 +251,7 @@
           obstacleSpawnTimer = 0;
         }
 
+        // Collision detection.
         let collidedObs = checkCollisions();
         if (collidedObs) {
           const obstacleLaneX = lanes[collidedObs.userData.lane];
@@ -231,12 +278,14 @@
           }
         }
 
+        // Smoothly animate the red cube's z-offset.
         const chaseOffsetZTarget = redCubeNearActive ? nearFollowOffset : defaultFollowOffset;
         chaseOffsetZCurrent = THREE.MathUtils.lerp(chaseOffsetZCurrent, chaseOffsetZTarget, delta * 5);
 
-        // Update red cube's position with animated x and z values.
+        // Update red cube's final position (using animated x and z).
         chaseCube.position.set(chaseXCurrent, player.position.y, player.position.z + chaseOffsetZCurrent);
 
+        // Camera follows the yellow cube.
         camera.position.x = player.position.x;
         camera.position.z = player.position.z + 10;
         camera.lookAt(player.position);
