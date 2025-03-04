@@ -64,17 +64,19 @@
       let isChangingLane = false;
       let prevLane = currentLane;
       let laneChangeTimer = 0;
-      const laneChangeDelay = 0.5;
+      const laneChangeDelay = 0.5; // seconds
 
-      // Set your desired offsets.
+      // Follow offsets for red cube.
       const defaultFollowOffset = 6; // when not in near mode
       const nearFollowOffset = 3;    // when a side collision occurs
-      // We'll animate the red cube's offset smoothly.
       let chaseOffsetZCurrent = defaultFollowOffset;
 
       let redCubeNearActive = false;
       let redCubeNearTimer = 0;
-      const redCubeNearDuration = 20;
+      const redCubeNearDuration = 20; // seconds
+
+      // We'll animate the red cube's x-position using chaseXCurrent.
+      let chaseXCurrent = lanes[currentLane];
 
       const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
       const playerMaterial = new THREE.MeshStandardMaterial({ color: 0xFFD700 });
@@ -112,7 +114,7 @@
 
       let obstacles = [];
       let obstacleSpawnTimer = 0;
-      const obstacleSpawnInterval = 2;
+      const obstacleSpawnInterval = 2; // seconds
 
       function spawnTrain() {
         const laneIndex = Math.floor(Math.random() * lanes.length);
@@ -157,7 +159,7 @@
         location.reload();
       }
 
-      const laneChangeSpeed = 10;
+      const laneChangeSpeed = 10; // units per second
 
       function animate() {
         requestAnimationFrame(animate);
@@ -180,12 +182,11 @@
           }
         }
 
-        if (isChangingLane && laneChangeTimer < laneChangeDelay) {
-          chaseCube.position.x = lanes[prevLane];
-        } else {
-          chaseCube.position.x = player.position.x;
-        }
+        // Animate the red cube's x-position smoothly.
+        let targetXForChase = (isChangingLane && laneChangeTimer < laneChangeDelay) ? lanes[prevLane] : player.position.x;
+        chaseXCurrent = THREE.MathUtils.lerp(chaseXCurrent, targetXForChase, delta * 5);
 
+        // Update track segments.
         trackGroup.children.forEach(segment => {
           segment.position.z += 30 * delta;
           if (segment.position.z > 20) {
@@ -234,11 +235,11 @@
           }
         }
 
-        // Determine target offset based on current state.
         const chaseOffsetZTarget = redCubeNearActive ? nearFollowOffset : defaultFollowOffset;
-        // Smoothly animate the z offset.
         chaseOffsetZCurrent = THREE.MathUtils.lerp(chaseOffsetZCurrent, chaseOffsetZTarget, delta * 5);
-        chaseCube.position.set(chaseCube.position.x, player.position.y, player.position.z + chaseOffsetZCurrent);
+
+        // Update red cube's position using the animated x and z values.
+        chaseCube.position.set(chaseXCurrent, player.position.y, player.position.z + chaseOffsetZCurrent);
 
         camera.position.x = player.position.x;
         camera.position.z = player.position.z + 10;
