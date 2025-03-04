@@ -42,8 +42,7 @@
       renderer.shadowMap.enabled = true;
       document.body.appendChild(renderer.domElement);
 
-      // In this version the player is at z = 0, and the camera is behind the player at z = 10.
-      // That means the track (and obstacles) are in front (with negative z) while recycled segments appear behind the camera.
+      // Camera is behind the player so that the player is in view.
       const camera = new THREE.PerspectiveCamera(
         75,
         window.innerWidth/window.innerHeight,
@@ -74,23 +73,19 @@
       player.castShadow = true;
       scene.add(player);
 
-      // Create the red chase cube; it stays behind the player at a fixed offset
-      const chaseGeometry = new THREE.BoxGeometry(2, 2, 2);
+      // Create the red cube (chase cube) with a smaller size.
+      const chaseGeometry = new THREE.BoxGeometry(1, 1, 1);
       const chaseMaterial = new THREE.MeshStandardMaterial({
         color: 0xff0000,
         emissive: 0xff4444,
         emissiveIntensity: 1
       });
       const chaseCube = new THREE.Mesh(chaseGeometry, chaseMaterial);
-      chaseCube.position.set(player.position.x, player.position.y + 3, player.position.z + 20);
       chaseCube.castShadow = true;
       scene.add(chaseCube);
 
-      // Build a continuous track from multiple segments.
+      // Build a continuous track using multiple segments.
       // We'll use 20 segments of length 20 (total 400 units).
-      // Initially, the segments are arranged from z = -10 (closest to the player) to z = -390 (further ahead).
-      // In update, segments move forward (increasing z). When a segment’s z > 20 (i.e. behind the camera),
-      // it is repositioned by subtracting the total track length (400) so the recycling happens out of view.
       const trackGroup = new THREE.Group();
       const numSegments = 20;
       const segmentLength = 20;
@@ -101,7 +96,6 @@
         const segmentGeo = new THREE.PlaneGeometry(trackWidth, segmentLength);
         const segment = new THREE.Mesh(segmentGeo, trackMaterial);
         segment.rotation.x = -Math.PI / 2;
-        // Arrange segments so they’re contiguous.
         segment.position.z = -segmentLength/2 - i * segmentLength;
         segment.position.y = 0;
         segment.receiveShadow = true;
@@ -120,7 +114,7 @@
         const trainMaterial = new THREE.MeshStandardMaterial({ color: 0x2a2a2a });
         const train = new THREE.Mesh(trainGeometry, trainMaterial);
         train.castShadow = true;
-        // Spawn ahead of the player at z = -100
+        // Spawn ahead of the player at z = -100.
         train.position.set(lanes[laneIndex], 1.5, -100);
         train.userData.lane = laneIndex;
         obstacles.push(train);
@@ -139,7 +133,7 @@
         }
       });
 
-      // Simple AABB collision detection
+      // Simple collision detection using bounding boxes
       function checkCollisions() {
         const playerBox = new THREE.Box3().setFromObject(player);
         for (let obs of obstacles) {
@@ -157,13 +151,8 @@
         location.reload();
       }
 
-      // Lane change speed
+      // Lane change animation speed
       const laneChangeSpeed = 10; // units per second
-
-      // Chase effect variables (for side collisions)
-      let chaseTriggered = false;
-      let chaseTimer = 0;
-      const chaseDuration = 1.0; // seconds
 
       function animate() {
         requestAnimationFrame(animate);
@@ -173,7 +162,7 @@
         score += delta * 10;
         document.getElementById("ui").textContent = "Score: " + Math.floor(score);
 
-        // Smooth lane change
+        // Smooth lane change for the player.
         if (isChangingLane) {
           const targetX = lanes[targetLane];
           const diff = targetX - player.position.x;
@@ -187,8 +176,6 @@
         }
 
         // Update track segments.
-        // They move forward (increasing z). When a segment's z exceeds 20 (behind the camera),
-        // reposition it by subtracting the total track length (400) so it appears ahead seamlessly.
         trackGroup.children.forEach(segment => {
           segment.position.z += 30 * delta;
           if (segment.position.z > 20) {
@@ -196,7 +183,7 @@
           }
         });
 
-        // Move obstacles (trains) toward the player.
+        // Move obstacles toward the player.
         for (let i = obstacles.length - 1; i >= 0; i--) {
           let obs = obstacles[i];
           obs.position.z += 30 * delta;
@@ -206,7 +193,7 @@
           }
         }
 
-        // Spawn obstacles periodically.
+        // Spawn new obstacles periodically.
         obstacleSpawnTimer += delta;
         if (obstacleSpawnTimer > obstacleSpawnInterval) {
           spawnTrain();
@@ -216,29 +203,14 @@
         // Collision detection.
         let collidedObs = checkCollisions();
         if (collidedObs) {
-          if (Math.abs(player.position.x - lanes[collidedObs.userData.lane]) > 0.5 && isChangingLane) {
-            chaseTriggered = true;
-            chaseTimer = 0;
-            targetLane = currentLane;
-            isChangingLane = true;
-          } else {
-            gameOver();
-          }
+          gameOver();
         }
 
-        // Update chase cube position. Normally it stays at a distance of 20 behind the player;
-        // if chase is triggered, it moves closer over chaseDuration.
-        let chaseZ = player.position.z + 20;
-        if (chaseTriggered) {
-          chaseTimer += delta;
-          chaseZ = THREE.MathUtils.lerp(player.position.z + 20, player.position.z + 5, chaseTimer / chaseDuration);
-          if (chaseTimer >= chaseDuration) {
-            chaseTriggered = false;
-          }
-        }
-        chaseCube.position.set(player.position.x, player.position.y + 3, chaseZ);
+        // Update red cube's position relative to the yellow cube.
+        // It now follows with the same x, 1 unit higher (instead of 3), and 5 units behind.
+        chaseCube.position.set(player.position.x, player.position.y + 1, player.position.z + 5);
 
-        // Update camera to follow the player.
+        // Update the camera to follow the player.
         camera.position.x = player.position.x;
         camera.position.z = player.position.z + 10;
         camera.lookAt(player.position);
