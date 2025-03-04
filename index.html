@@ -209,7 +209,7 @@
       // ----- Input Handling -----
       window.addEventListener("keydown", (e) => {
         // Lane change controls:
-        if (!gameActive || isChangingLane) return;
+        if (!gameActive) return;
         if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
             prevLane = currentLane;
             if (e.key === "ArrowLeft" && currentLane > 0) {
