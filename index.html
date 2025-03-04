@@ -17,7 +17,7 @@
         text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
         pointer-events: none;
       }
-      /* Style for game over overlay */
+      /* Game Over Overlay */
       #gameOverOverlay {
         position: fixed;
         top: 0;
@@ -68,7 +68,7 @@
       
       const camera = new THREE.PerspectiveCamera(
         75,
-        window.innerWidth/window.innerHeight,
+        window.innerWidth / window.innerHeight,
         0.1,
         1000
       );
@@ -312,7 +312,8 @@
       }
       
       function gameOver() {
-        // Instead of immediately showing alert, start game over animation.
+        // Immediately show overlay, then start the game over animation in the background.
+        showGameOverOverlay();
         gameActive = false;
         gameOverAnimActive = true;
         gameOverAnimTimer = 0;
@@ -323,22 +324,21 @@
       // ----- Game Over Animation for Red Cube -----
       function animateGameOver(delta) {
         gameOverAnimTimer += delta;
-        // Move red cube toward player's position.
-        chaseCube.position.lerp(player.position, delta * 2);
-        // Scale up red cube to simulate bursting.
-        const targetScale = new THREE.Vector3(3, 3, 3);
-        chaseCube.scale.lerp(targetScale, delta * 2);
-        // Increase emissive intensity to make it glow.
-        chaseCube.material.emissive = new THREE.Color(0xff0000);
-        chaseCube.material.emissiveIntensity = THREE.MathUtils.lerp(chaseCube.material.emissiveIntensity, 2, delta * 2);
-        // Rotate the red cube.
-        chaseCube.rotation.x += delta * 5;
-        chaseCube.rotation.y += delta * 5;
-        if (gameOverAnimTimer >= gameOverAnimDuration) {
-          showGameOverOverlay();
+        if (gameOverAnimTimer < gameOverAnimDuration) {
+          // Animate the red cube: move it toward the player, scale it up, rotate, and increase its glow.
+          chaseCube.position.lerp(player.position, delta * 2);
+          const targetScale = new THREE.Vector3(3, 3, 3);
+          chaseCube.scale.lerp(targetScale, delta * 2);
+          chaseCube.rotation.x += delta * 5;
+          chaseCube.rotation.y += delta * 5;
+          chaseCube.material.emissive = new THREE.Color(0xff0000);
+          chaseCube.material.emissiveIntensity = THREE.MathUtils.lerp(chaseCube.material.emissiveIntensity, 2, delta * 2);
+        } else {
+          // After the duration, freeze the red cube by not updating it further.
           gameOverAnimActive = false;
         }
       }
+
       
       // ----- Dynamic Difficulty Variables -----
       const baseSpeed = 30;
@@ -348,8 +348,9 @@
       function animate() {
         requestAnimationFrame(animate);
         const delta = clock.getDelta();
+      
+        // If game over animation is active, run it in the background.
         if (!gameActive && gameOverAnimActive) {
-          // Run game over animation.
           animateGameOver(delta);
           renderer.render(scene, camera);
           return;
@@ -358,119 +359,121 @@
           return;
         }
       
-        const elapsedTime = clock.getElapsedTime();
-        const gameSpeed = baseSpeed + elapsedTime * 0.5;
-        let currentSpawnInterval = baseSpawnInterval / (1 + elapsedTime / 60);
-        currentSpawnInterval = Math.max(currentSpawnInterval, 0.5);
+        if (gameActive) {
+          const elapsedTime = clock.getElapsedTime();
+          const gameSpeed = baseSpeed + elapsedTime * 0.5;
+          let currentSpawnInterval = baseSpawnInterval / (1 + elapsedTime / 60);
+          currentSpawnInterval = Math.max(currentSpawnInterval, 0.5);
       
-        score += delta * 10;
-        document.getElementById("ui").textContent = "Score: " + Math.floor(score);
+          score += delta * 10;
+          document.getElementById("ui").textContent = "Score: " + Math.floor(score);
       
-        // Handle yellow cube lane change.
-        if (isChangingLane) {
-          laneChangeTimer += delta;
-          const targetX = lanes[targetLane];
-          const diff = targetX - player.position.x;
-          if (Math.abs(diff) < 0.05) {
-            player.position.x = targetX;
-            currentLane = targetLane;
-            isChangingLane = false;
-          } else {
-            player.position.x += Math.sign(diff) * laneChangeSpeed * delta;
-          }
-        }
-      
-        // Animate red cube's x-position smoothly.
-        let targetXForChase = (isChangingLane && laneChangeTimer < laneChangeDelay) ? lanes[prevLane] : player.position.x;
-        chaseXCurrent = THREE.MathUtils.lerp(chaseXCurrent, targetXForChase, delta * 5);
-      
-        // Jump physics.
-        if (isJumping) {
-          player.position.y += jumpVelocity * delta;
-          jumpVelocity -= gravity * delta;
-          if (player.position.y <= (isCrouching ? crouchY : normalY)) {
-            player.position.y = (isCrouching ? crouchY : normalY);
-            isJumping = false;
-            jumpVelocity = 0;
-          }
-        }
-      
-        // Update track segments.
-        trackGroup.children.forEach(segment => {
-          segment.position.z += gameSpeed * delta;
-          if (segment.position.z > 20) {
-            segment.position.z -= totalTrackLength;
-          }
-        });
-      
-        // Move obstacles toward the player.
-        for (let i = obstacles.length - 1; i >= 0; i--) {
-          let obs = obstacles[i];
-          obs.position.z += gameSpeed * delta;
-          if (obs.userData.type === "train") {
-            const carCount = obs.userData.carCount;
-            const carLength = obs.userData.carLength;
-            const gap = obs.userData.gap;
-            if (obs.position.z - ((carCount - 1) * (carLength + gap)) > 10) {
-              scene.remove(obs);
-              obstacles.splice(i, 1);
-            }
-          } else if (obs.userData.type === "rollObstacle") {
-            if (obs.position.z > 10) {
-              scene.remove(obs);
-              obstacles.splice(i, 1);
+          // Handle yellow cube lane change.
+          if (isChangingLane) {
+            laneChangeTimer += delta;
+            const targetX = lanes[targetLane];
+            const diff = targetX - player.position.x;
+            if (Math.abs(diff) < 0.05) {
+              player.position.x = targetX;
+              currentLane = targetLane;
+              isChangingLane = false;
+            } else {
+              player.position.x += Math.sign(diff) * laneChangeSpeed * delta;
             }
           }
-        }
       
-        obstacleSpawnTimer += delta;
-        if (obstacleSpawnTimer > currentSpawnInterval) {
-          spawnObstacle();
-          obstacleSpawnTimer = 0;
-        }
+          // Animate red cube's x-position smoothly.
+          let targetXForChase = (isChangingLane && laneChangeTimer < laneChangeDelay) ? lanes[prevLane] : player.position.x;
+          chaseXCurrent = THREE.MathUtils.lerp(chaseXCurrent, targetXForChase, delta * 5);
       
-        // Collision detection.
-        let collidedObs = checkCollisions();
-        if (collidedObs) {
-          if (collidedObs.userData.type === "train") {
-            const obstacleLaneX = lanes[collidedObs.userData.lane];
-            const diffX = Math.abs(player.position.x - obstacleLaneX);
-            if (isChangingLane && diffX > 0.3) {
-              if (redCubeNearActive) {
-                gameOver();
+          // Jump physics.
+          if (isJumping) {
+            player.position.y += jumpVelocity * delta;
+            jumpVelocity -= gravity * delta;
+            if (player.position.y <= (isCrouching ? crouchY : normalY)) {
+              player.position.y = (isCrouching ? crouchY : normalY);
+              isJumping = false;
+              jumpVelocity = 0;
+            }
+          }
+      
+          // Update track segments.
+          trackGroup.children.forEach(segment => {
+            segment.position.z += gameSpeed * delta;
+            if (segment.position.z > 20) {
+              segment.position.z -= totalTrackLength;
+            }
+          });
+      
+          // Move obstacles toward the player.
+          for (let i = obstacles.length - 1; i >= 0; i--) {
+            let obs = obstacles[i];
+            obs.position.z += gameSpeed * delta;
+            if (obs.userData.type === "train") {
+              const carCount = obs.userData.carCount;
+              const carLength = obs.userData.carLength;
+              const gap = obs.userData.gap;
+              if (obs.position.z - ((carCount - 1) * (carLength + gap)) > 10) {
+                scene.remove(obs);
+                obstacles.splice(i, 1);
+              }
+            } else if (obs.userData.type === "rollObstacle") {
+              if (obs.position.z > 10) {
+                scene.remove(obs);
+                obstacles.splice(i, 1);
+              }
+            }
+          }
+      
+          obstacleSpawnTimer += delta;
+          if (obstacleSpawnTimer > currentSpawnInterval) {
+            spawnObstacle();
+            obstacleSpawnTimer = 0;
+          }
+      
+          // Collision detection.
+          let collidedObs = checkCollisions();
+          if (collidedObs) {
+            if (collidedObs.userData.type === "train") {
+              const obstacleLaneX = lanes[collidedObs.userData.lane];
+              const diffX = Math.abs(player.position.x - obstacleLaneX);
+              if (isChangingLane && diffX > 0.3) {
+                if (redCubeNearActive) {
+                  gameOver();
+                } else {
+                  redCubeNearActive = true;
+                  redCubeNearTimer = 0;
+                  targetLane = prevLane;
+                  isChangingLane = true;
+                  laneChangeTimer = 0;
+                }
               } else {
-                redCubeNearActive = true;
-                redCubeNearTimer = 0;
-                targetLane = prevLane;
-                isChangingLane = true;
-                laneChangeTimer = 0;
+                gameOver();
               }
             } else {
               gameOver();
             }
-          } else {
-            gameOver();
           }
-        }
       
-        if (redCubeNearActive) {
-          redCubeNearTimer += delta;
-          if (redCubeNearTimer >= redCubeNearDuration) {
-            redCubeNearActive = false;
+          if (redCubeNearActive) {
+            redCubeNearTimer += delta;
+            if (redCubeNearTimer >= redCubeNearDuration) {
+              redCubeNearActive = false;
+            }
           }
+      
+          // Smoothly animate the red cube's z-offset.
+          const chaseOffsetZTarget = redCubeNearActive ? nearFollowOffset : defaultFollowOffset;
+          chaseOffsetZCurrent = THREE.MathUtils.lerp(chaseOffsetZCurrent, chaseOffsetZTarget, delta * 5);
+      
+          // Update red cube's final position (using animated x and z).
+          chaseCube.position.set(chaseXCurrent, player.position.y, player.position.z + chaseOffsetZCurrent);
+      
+          // Camera follows the yellow cube.
+          camera.position.x = player.position.x;
+          camera.position.z = player.position.z + 10;
+          camera.lookAt(player.position);
         }
-      
-        // Smoothly animate the red cube's z-offset.
-        const chaseOffsetZTarget = redCubeNearActive ? nearFollowOffset : defaultFollowOffset;
-        chaseOffsetZCurrent = THREE.MathUtils.lerp(chaseOffsetZCurrent, chaseOffsetZTarget, delta * 5);
-      
-        // Update red cube's final position (using animated x and z).
-        chaseCube.position.set(chaseXCurrent, player.position.y, player.position.z + chaseOffsetZCurrent);
-      
-        // Camera follows the yellow cube.
-        camera.position.x = player.position.x;
-        camera.position.z = player.position.z + 10;
-        camera.lookAt(player.position);
       
         renderer.render(scene, camera);
       }
