@@ -111,11 +111,11 @@
         // Add lane dividers as flat planes.
         const dividerMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide });
         const dividerGeo = new THREE.PlaneGeometry(0.1, segmentLength - 2);
-        dividerGeo.rotateX(-Math.PI / 2); // lay flat on the track
+        dividerGeo.rotateY(-Math.PI / 2); // lay flat on the track
         const divider1 = new THREE.Mesh(dividerGeo, dividerMaterial);
-        divider1.position.set(-2, 0.02, 0);
+        divider1.position.set(-2, 0.02, 0.2);
         const divider2 = new THREE.Mesh(dividerGeo, dividerMaterial);
-        divider2.position.set(2, 0.02, 0);
+        divider2.position.set(2, 0.02, 0.2);
         segment.add(divider1);
         segment.add(divider2);
 
