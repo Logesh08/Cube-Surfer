@@ -222,12 +222,12 @@
             laneChangeTimer = 0;
             }
         }
-        // Jump: Only trigger if not already jumping or crouching.
+        // Jump: Only trigger if not already jumping.
         if (e.key === "ArrowUp" && !isJumping) {
             isJumping = true;
             jumpVelocity = initialJumpVelocity;
         }
-        // Crouch: Only trigger if not jumping or already crouching.
+        // Crouch: Only trigger if not already crouching.
         if (e.key === "ArrowDown" && !isCrouching) {
             isCrouching = true;
             player.scale.y = 0.5;
@@ -270,9 +270,35 @@
 
       function gameOver() {
         gameActive = false;
-        alert("Game Over! Score: " + Math.floor(score));
-        location.reload();
+        // Create an overlay if it doesn't exist.
+        let overlay = document.getElementById("gameOverOverlay");
+        if (!overlay) {
+            overlay = document.createElement("div");
+            overlay.id = "gameOverOverlay";
+            overlay.style.position = "fixed";
+            overlay.style.top = "0";
+            overlay.style.left = "0";
+            overlay.style.width = "100%";
+            overlay.style.height = "100%";
+            overlay.style.background = "rgba(0, 0, 0, 0.8)";
+            overlay.style.display = "flex";
+            overlay.style.flexDirection = "column";
+            overlay.style.alignItems = "center";
+            overlay.style.justifyContent = "center";
+            overlay.style.color = "white";
+            overlay.style.fontFamily = "Arial, sans-serif";
+            overlay.style.fontSize = "36px";
+            overlay.style.zIndex = "1000";
+            overlay.style.cursor = "pointer";
+            overlay.innerHTML = `<div id="finalScore"></div><div style="font-size:24px; margin-top:20px;">Click anywhere to restart</div>`;
+            document.body.appendChild(overlay);
+            overlay.addEventListener("click", () => {
+            location.reload();
+            });
+        }
+        document.getElementById("finalScore").innerText = `Game Over! Score: ${Math.floor(score)}`;
       }
+
 
       const laneChangeSpeed = 10; // units per second
 
