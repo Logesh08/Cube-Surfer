@@ -138,6 +138,8 @@
 
       // Use a subtle color palette for jump obstacles.
       const trainColors = [0x5A7D9A, 0x9A7D5A, 0x7D9A5A, 0x9A5A7D];
+      const jumpObstacleColors = [0x5A7D9A, 0x9A7D5A, 0x7D9A5A, 0x9A5A7D];
+      const rollObstacleColors = [0x7A8C8A, 0x8C7A8C, 0x7A8C7A, 0x8C8C7A];
 
       // Spawn a jump obstacle.
       function spawnJumpObstacle() {
@@ -145,7 +147,8 @@
         const jumpGroup = new THREE.Group();
         // Top bar dimensions: same as your roll obstacle’s top bar.
         const barWidth = 2, barHeight = 1.5, barDepth = 1;
-        const barMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
+        const color = jumpObstacleColors[Math.floor(Math.random() * jumpObstacleColors.length)];
+        const barMaterial = new THREE.MeshStandardMaterial({ color: color });
         const barGeometry = new THREE.BoxGeometry(barWidth, barHeight, barDepth);
         const topBar = new THREE.Mesh(barGeometry, barMaterial);
         topBar.castShadow = true;
@@ -172,9 +175,10 @@
       function spawnRollObstacle() {
         // Create a group for the roll obstacle.
         const rollGroup = new THREE.Group();
+        const color = rollObstacleColors[Math.floor(Math.random() * rollObstacleColors.length)];
         // Top bar dimensions: reduce height by half (height 1 instead of 2), width 2, depth 1.
         const barWidth = 2, barHeight = 1.2, barDepth = 1;
-        const barMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
+        const barMaterial = new THREE.MeshStandardMaterial({ color: color });
         const barGeometry = new THREE.BoxGeometry(barWidth, barHeight, barDepth);
         const topBar = new THREE.Mesh(barGeometry, barMaterial);
         topBar.castShadow = true;
@@ -188,7 +192,7 @@
         // Create supports (pillars) for the sides.
         // Dimensions: width 0.3, height 1.5, depth 0.3.
         const supportWidth = 0.3, supportHeight = 1.5, supportDepth = 0.3;
-        const supportMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
+        const supportMaterial = new THREE.MeshStandardMaterial({ color: color });
         const supportGeometry = new THREE.BoxGeometry(supportWidth, supportHeight, supportDepth);
         // Position supports so that their top touches the bottom of the top bar.
         // Top of support = support center y + supportHeight/2.
@@ -222,8 +226,7 @@
         if (Math.random() < 0.5) {
           spawnJumpObstacle();
         } else {
-          spawnJumpObstacle();
-        //   spawnRollObstacle();
+          spawnRollObstacle();
         }
       }
 
