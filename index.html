@@ -1,43 +1,53 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
+
+<head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Cube Surfer</title>
     <style>
-      body { margin: 0; overflow: hidden; }
-      canvas { display: block; }
-      #ui {
-        position: absolute;
-        top: 20px;
-        left: 20px;
-        color: white;
-        font-family: Arial, sans-serif;
-        font-size: 24px;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-        pointer-events: none;
-      }
-      /* Game Over Overlay */
-      #gameOverOverlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.8);
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-family: Arial, sans-serif;
-        font-size: 36px;
-        z-index: 1000;
-        cursor: pointer;
-      }
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 24px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+        }
+
+        /* Game Over Overlay */
+        #gameOverOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 36px;
+            z-index: 1000;
+            cursor: pointer;
+        }
     </style>
-  </head>
-  <body>
+</head>
+
+<body>
     <div id="ui">Score: 0</div>
     <script type="importmap">
       {
@@ -48,466 +58,467 @@
       }
     </script>
     <script type="module">
-      import * as THREE from 'three';
+        import * as THREE from 'three';
 
-      // ----- Scene Setup -----
-      const scene = new THREE.Scene();
-      const clock = new THREE.Clock();
-      let score = 0;
-      let gameActive = true;
-      
-      // Variables for game over animation.
-      let gameOverAnimActive = false;
-      let gameOverAnimTimer = 0;
-      const gameOverAnimDuration = 2; // seconds
-      
-      const renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.shadowMap.enabled = true;
-      document.body.appendChild(renderer.domElement);
-      
-      const camera = new THREE.PerspectiveCamera(
-        75,
-        window.innerWidth / window.innerHeight,
-        0.1,
-        1000
-      );
-      camera.position.set(0, 5, 10);
-      camera.lookAt(0, 1.5, 0);
-      
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-      scene.add(ambientLight);
-      const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-      directionalLight.position.set(5, 10, 5);
-      directionalLight.castShadow = true;
-      scene.add(directionalLight);
-      
-      // ----- Game Variables & Dynamic Difficulty -----
-      const lanes = [-4, 0, 4];
-      let currentLane = 1;
-      let targetLane = currentLane;
-      let isChangingLane = false;
-      let prevLane = currentLane;
-      let laneChangeTimer = 0;
-      const laneChangeDelay = 0.5; // seconds
-      
-      // Red cube follow offsets.
-      const defaultFollowOffset = 6;
-      const nearFollowOffset = 3;
-      let chaseOffsetZCurrent = defaultFollowOffset;
-      let redCubeNearActive = false;
-      let redCubeNearTimer = 0;
-      const redCubeNearDuration = 20; // seconds
-      
-      // Animate red cube's x-position.
-      let chaseXCurrent = lanes[currentLane];
-      
-      // ----- Jump & Crouch Variables -----
-      let isJumping = false;
-      let jumpVelocity = 0;
-      const gravity = 20; // units per second^2
-      let isCrouching = false;
-      const normalY = 1.5;
-      const crouchY = 1.25;
-      const initialJumpVelocity = 8;
-      
-      // ----- Player & Red Cube (Chase Cube) -----
-      const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
-      const playerMaterial = new THREE.MeshStandardMaterial({ color: 0xFFD700 });
-      const player = new THREE.Mesh(playerGeometry, playerMaterial);
-      player.position.set(lanes[currentLane], normalY, 0);
-      player.castShadow = true;
-      scene.add(player);
-      
-      const chaseGeometry = new THREE.BoxGeometry(1, 1, 1);
-      const chaseMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0x000000, emissiveIntensity: 0 });
-      const chaseCube = new THREE.Mesh(chaseGeometry, chaseMaterial);
-      chaseCube.castShadow = true;
-      scene.add(chaseCube);
-      
-      // ----- Track Creation with Lane Dividers -----
-      const trackGroup = new THREE.Group();
-      const numSegments = 20;
-      const segmentLength = 20;
-      const totalTrackLength = numSegments * segmentLength;
-      const trackWidth = 20;
-      const trackMaterial = new THREE.MeshStandardMaterial({ color: 0x444444 });
-      for (let i = 0; i < numSegments; i++) {
-        const segmentGeo = new THREE.PlaneGeometry(trackWidth, segmentLength);
-        const segment = new THREE.Mesh(segmentGeo, trackMaterial);
-        segment.rotation.x = -Math.PI / 2;
-        segment.position.z = -segmentLength / 2 - i * segmentLength;
-        segment.position.y = 0;
-        segment.receiveShadow = true;
-        // Add lane dividers.
-        const dividerMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide });
-        const dividerGeo = new THREE.PlaneGeometry(0.1, segmentLength - 2);
-        dividerGeo.rotateY(-Math.PI / 2);
-        const divider1 = new THREE.Mesh(dividerGeo, dividerMaterial);
-        divider1.position.set(-2, 0.02, 0.2);
-        const divider2 = new THREE.Mesh(dividerGeo, dividerMaterial);
-        divider2.position.set(2, 0.02, 0.2);
-        segment.add(divider1);
-        segment.add(divider2);
-        trackGroup.add(segment);
-      }
-      scene.add(trackGroup);
-      
-      // ----- Obstacles & Dynamic Difficulty Variables -----
-      let obstacles = [];
-      // Single spawn timer for obstacles.
-      let obstacleSpawnTimer = 0;
-      const baseSpawnInterval = 2; // seconds
-      
-      // Color palettes.
-      const trainColors = [0x5A7D9A, 0x9A7D5A, 0x7D9A5A, 0x9A5A7D];
-      const jumpObstacleColors = [0x5A7D9A, 0x9A7D5A, 0x7D9A5A, 0x9A5A7D]; // could be same as trainColors
-      const rollObstacleColors = [0x7A8C8A, 0x8C7A8C, 0x7A8C7A, 0x8C8C7A];
-      
-      // Spawn a train obstacle (jump obstacle, full train block).
-      function spawnTrain() {
-        const trainGroup = new THREE.Group();
-        const carCount = Math.floor(Math.random() * 7) + 2; // 2 to 8 cars.
-        const carWidth = 3, carHeight = 2, carLength = 8;
-        const gap = 0.5;
-        const color = trainColors[Math.floor(Math.random() * trainColors.length)];
-        const carMaterial = new THREE.MeshStandardMaterial({ color: color });
-        const carGeometry = new THREE.BoxGeometry(carWidth, carHeight, carLength);
-        for (let i = 0; i < carCount; i++) {
-          const car = new THREE.Mesh(carGeometry, carMaterial);
-          car.castShadow = true;
-          car.position.z = -i * (carLength + gap);
-          trainGroup.add(car);
-        }
-        trainGroup.userData.carCount = carCount;
-        trainGroup.userData.carLength = carLength;
-        trainGroup.userData.gap = gap;
-        const laneIndex = Math.floor(Math.random() * lanes.length);
-        trainGroup.position.set(lanes[laneIndex], normalY, -100);
-        trainGroup.userData.lane = laneIndex;
-        trainGroup.userData.type = "train";
-        obstacles.push(trainGroup);
-        scene.add(trainGroup);
-      }
-      
-      // Spawn a jump obstacle (simple top bar) – player must jump over it.
-      function spawnJumpObstacle() {
-        const jumpGroup = new THREE.Group();
-        const barWidth = 2, barHeight = 1.5, barDepth = 1;
-        const color = jumpObstacleColors[Math.floor(Math.random() * jumpObstacleColors.length)];
-        const barMaterial = new THREE.MeshStandardMaterial({ color: color });
-        const barGeometry = new THREE.BoxGeometry(barWidth, barHeight, barDepth);
-        const topBar = new THREE.Mesh(barGeometry, barMaterial);
-        topBar.castShadow = true;
-        // Position so that the top of the bar is flush with the ground.
-        topBar.position.set(0, -0.2, 0);
-        jumpGroup.add(topBar);
-        const laneIndex = Math.floor(Math.random() * lanes.length);
-        jumpGroup.position.set(lanes[laneIndex], 0.8, -100);
-        jumpGroup.userData.lane = laneIndex;
-        jumpGroup.userData.type = "jumpObstacle";
-        obstacles.push(jumpGroup);
-        scene.add(jumpGroup);
-      }
-      
-      // Spawn a roll obstacle (with supports) – player must crouch under it.
-      function spawnRollObstacle() {
-        const rollGroup = new THREE.Group();
-        const color = rollObstacleColors[Math.floor(Math.random() * rollObstacleColors.length)];
-        const barWidth = 2, barHeight = 1.2, barDepth = 1;
-        const barMaterial = new THREE.MeshStandardMaterial({ color: color });
-        const barGeometry = new THREE.BoxGeometry(barWidth, barHeight, barDepth);
-        const topBar = new THREE.Mesh(barGeometry, barMaterial);
-        topBar.castShadow = true;
-        topBar.position.set(0, -0.4, 0);
-        rollGroup.add(topBar);
-      
-        const supportWidth = 0.3, supportHeight = 1.5, supportDepth = 0.3;
-        const supportMaterial = new THREE.MeshStandardMaterial({ color: color });
-        const supportGeometry = new THREE.BoxGeometry(supportWidth, supportHeight, supportDepth);
-        const leftSupport = new THREE.Mesh(supportGeometry, supportMaterial);
-        leftSupport.castShadow = true;
-        const rightSupport = new THREE.Mesh(supportGeometry, supportMaterial);
-        rightSupport.castShadow = true;
-        leftSupport.position.set(-0.85, -1.25, 0);
-        rightSupport.position.set(0.85, -1.25, 0);
-        rollGroup.add(leftSupport);
-        rollGroup.add(rightSupport);
-      
-        const laneIndex = Math.floor(Math.random() * lanes.length);
-        rollGroup.position.set(lanes[laneIndex], 2.5, -100);
-        rollGroup.userData.lane = laneIndex;
-        rollGroup.userData.type = "rollObstacle";
-        obstacles.push(rollGroup);
-        scene.add(rollGroup);
-      }
-      
-      // Combined spawnObstacle function that randomly chooses one of the three types.
-      function spawnObstacle() {
-        const r = Math.random();
-        if (r < 0.33) {
-          spawnTrain();
-        } else if (r < 0.66) {
-          spawnJumpObstacle();
-        } else {
-          spawnRollObstacle();
-        }
-      }
-      
-      // ----- Input Handling -----
-      window.addEventListener("keydown", (e) => {
-        // Only check that the game is active.
-        if (!gameActive) return;
-        
-        // Lane change controls: Always allow these, even if already changing lanes.
-        if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-            // Update previous lane to the current lane.
-            prevLane = currentLane;
-            // Set a new target lane based on the key press.
-            if (e.key === "ArrowLeft" && currentLane > 0) {
-            targetLane = currentLane - 1;
-            } else if (e.key === "ArrowRight" && currentLane < lanes.length - 1) {
-            targetLane = currentLane + 1;
-            }
-            // Reset the lane change timer so that the animation adjusts to the new target.
-            laneChangeTimer = 0;
-            // Set the flag (or leave it true if already true).
-            isChangingLane = true;
-        }
-        
-        // Jump: Allow jumping even during lane change.
-        if (e.key === "ArrowUp" && !isJumping) {
-            isJumping = true;
-            jumpVelocity = initialJumpVelocity;
-        }
-        
-        // Crouch: Allow crouching even during lane change.
-        if (e.key === "ArrowDown" && !isCrouching) {
-            isCrouching = true;
-            player.scale.y = 0.5;
-            player.position.y = crouchY;
-        }
-      });
-      
-      window.addEventListener("keyup", (e) => {
-        if (e.key === "ArrowDown" && isCrouching) {
-          isCrouching = false;
-          player.scale.y = 1;
-          player.position.y = normalY;
-        }
-      });
-      
-      // ----- Collision Detection & Game Over -----
-      function checkCollisions() {
-        const playerBox = new THREE.Box3().setFromObject(player);
-        for (let obs of obstacles) {
-          // If roll obstacle and player is crouching, ignore collision.
-          if (obs.userData.type === "rollObstacle" && isCrouching) continue;
-          const obsBox = new THREE.Box3().setFromObject(obs);
-          if (playerBox.intersectsBox(obsBox)) return obs;
-        }
-        return null;
-      }
-      
-      function showGameOverOverlay() {
-        let overlay = document.getElementById("gameOverOverlay");
-        if (!overlay) {
-          overlay = document.createElement("div");
-          overlay.id = "gameOverOverlay";
-          overlay.style.position = "fixed";
-          overlay.style.top = "0";
-          overlay.style.left = "0";
-          overlay.style.width = "100%";
-          overlay.style.height = "100%";
-          overlay.style.background = "rgba(0,0,0,0.8)";
-          overlay.style.display = "flex";
-          overlay.style.flexDirection = "column";
-          overlay.style.alignItems = "center";
-          overlay.style.justifyContent = "center";
-          overlay.style.color = "white";
-          overlay.style.fontFamily = "Arial, sans-serif";
-          overlay.style.fontSize = "36px";
-          overlay.style.zIndex = "1000";
-          overlay.style.cursor = "pointer";
-          overlay.innerHTML = `<div id="finalScore"></div><div style="font-size:24px; margin-top:20px;">Click anywhere to restart</div>`;
-          document.body.appendChild(overlay);
-          overlay.addEventListener("click", () => {
-            location.reload();
-          });
-        }
-        document.getElementById("finalScore").innerText = `Game Over! Score: ${Math.floor(score)}`;
-      }
-      
-      function gameOver() {
-        // Immediately show overlay, then start game-over animation.
-        showGameOverOverlay();
-        gameActive = false;
-        gameOverAnimActive = true;
-        gameOverAnimTimer = 0;
-      }
-      
-      const laneChangeSpeed = 10; // units per second
-      
-      // ----- Game Over Animation for Red Cube -----
-      function animateGameOver(delta) {
-        gameOverAnimTimer += delta;
-        if (gameOverAnimTimer < gameOverAnimDuration) {
-          // Animate red cube: move toward player, scale up, rotate, and glow.
-          chaseCube.position.lerp(player.position, delta * 2);
-          const targetScale = new THREE.Vector3(3, 3, 3);
-          chaseCube.scale.lerp(targetScale, delta * 2);
-          chaseCube.rotation.x += delta * 5;
-          chaseCube.rotation.y += delta * 5;
-          chaseCube.material.emissive = new THREE.Color(0xff0000);
-          chaseCube.material.emissiveIntensity = THREE.MathUtils.lerp(chaseCube.material.emissiveIntensity, 2, delta * 2);
-        } else {
-          gameOverAnimActive = false;
-        }
-      }
+        // ----- Scene Setup -----
+        const scene = new THREE.Scene();
+        const clock = new THREE.Clock();
+        let score = 0;
+        let gameActive = true;
 
-      
-      // ----- Dynamic Difficulty Variables -----
-      const baseSpeed = 30;
-      
-      // ----- Main Animation Loop -----
-      function animate() {
-        requestAnimationFrame(animate);
-        const delta = clock.getDelta();
-      
-        // Run game over animation if active.
-        if (!gameActive && gameOverAnimActive) {
-          animateGameOver(delta);
-          renderer.render(scene, camera);
-          return;
-        } else if (!gameActive) {
-          renderer.render(scene, camera);
-          return;
-        }
-      
-        const elapsedTime = clock.getElapsedTime();
-        const gameSpeed = baseSpeed + elapsedTime * 0.5;
-        let currentSpawnInterval = baseSpawnInterval / (1 + elapsedTime / 60);
-        currentSpawnInterval = Math.max(currentSpawnInterval, 0.5);
-      
-        score += delta * 10;
-        document.getElementById("ui").textContent = "Score: " + Math.floor(score);
-      
-        // Handle yellow cube lane change.
-        if (isChangingLane) {
-          laneChangeTimer += delta;
-          const targetX = lanes[targetLane];
-          const diff = targetX - player.position.x;
-          if (Math.abs(diff) < 0.05) {
-            player.position.x = targetX;
-            currentLane = targetLane;
-            isChangingLane = false;
-          } else {
-            player.position.x += Math.sign(diff) * laneChangeSpeed * delta;
-          }
-        }
-      
-        // Animate red cube's x-position.
-        let targetXForChase = (isChangingLane && laneChangeTimer < laneChangeDelay) ? lanes[prevLane] : player.position.x;
-        chaseXCurrent = THREE.MathUtils.lerp(chaseXCurrent, targetXForChase, delta * 5);
-      
-        // Jump physics.
-        if (isJumping) {
-          player.position.y += jumpVelocity * delta;
-          jumpVelocity -= gravity * delta;
-          if (player.position.y <= (isCrouching ? crouchY : normalY)) {
-            player.position.y = (isCrouching ? crouchY : normalY);
-            isJumping = false;
-            jumpVelocity = 0;
-          }
-        }
-      
-        // Update track segments.
-        trackGroup.children.forEach(segment => {
-          segment.position.z += gameSpeed * delta;
-          if (segment.position.z > 20) {
-            segment.position.z -= totalTrackLength;
-          }
-        });
-      
-        // Move obstacles toward the player.
-        for (let i = obstacles.length - 1; i >= 0; i--) {
-          let obs = obstacles[i];
-          obs.position.z += gameSpeed * delta;
-          if (obs.userData.type === "train" || obs.userData.type === "jumpObstacle") {
-            const carCount = obs.userData.carCount;
-            const carLength = obs.userData.carLength;
-            const gap = obs.userData.gap;
-            if (obs.position.z - ((carCount - 1) * (carLength + gap)) > 10) {
-              scene.remove(obs);
-              obstacles.splice(i, 1);
-            }
-          } else if (obs.userData.type === "rollObstacle") {
-            if (obs.position.z > 10) {
-              scene.remove(obs);
-              obstacles.splice(i, 1);
-            }
-          }
-        }
-      
-        obstacleSpawnTimer += delta;
-        if (obstacleSpawnTimer > currentSpawnInterval) {
-          spawnObstacle();
-          obstacleSpawnTimer = 0;
-        }
-      
-        // Collision detection.
-        let collidedObs = checkCollisions();
-        if (collidedObs) {
-          if (collidedObs.userData.type === "train" || collidedObs.userData.type === "jumpObstacle") {
-            const obstacleLaneX = lanes[collidedObs.userData.lane];
-            const diffX = Math.abs(player.position.x - obstacleLaneX);
-            if (isChangingLane && diffX > 0.3) {
-              if (redCubeNearActive) {
-                gameOver();
-              } else {
-                redCubeNearActive = true;
-                redCubeNearTimer = 0;
-                targetLane = prevLane;
-                isChangingLane = true;
-                laneChangeTimer = 0;
-              }
-            } else {
-              gameOver();
-            }
-          } else {
-            gameOver();
-          }
-        }
-      
-        if (redCubeNearActive) {
-          redCubeNearTimer += delta;
-          if (redCubeNearTimer >= redCubeNearDuration) {
-            redCubeNearActive = false;
-          }
-        }
-      
-        // Smoothly animate the red cube's z-offset.
-        const chaseOffsetZTarget = redCubeNearActive ? nearFollowOffset : defaultFollowOffset;
-        chaseOffsetZCurrent = THREE.MathUtils.lerp(chaseOffsetZCurrent, chaseOffsetZTarget, delta * 5);
-      
-        // Update red cube's final position.
-        chaseCube.position.set(chaseXCurrent, player.position.y, player.position.z + chaseOffsetZCurrent);
-      
-        // Camera follows the yellow cube.
-        camera.position.x = player.position.x;
-        camera.position.z = player.position.z + 10;
-        camera.lookAt(player.position);
-      
-        renderer.render(scene, camera);
-      }
-      
-      animate();
-      
-      window.addEventListener("resize", () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
+        // Variables for game over animation.
+        let gameOverAnimActive = false;
+        let gameOverAnimTimer = 0;
+        const gameOverAnimDuration = 2; // seconds
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-      });
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        const camera = new THREE.PerspectiveCamera(
+            75,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            1000
+        );
+        camera.position.set(0, 5, 10);
+        camera.lookAt(0, 1.5, 0);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(5, 10, 5);
+        directionalLight.castShadow = true;
+        scene.add(directionalLight);
+
+        // ----- Game Variables & Dynamic Difficulty -----
+        const lanes = [-4, 0, 4];
+        let currentLane = 1;
+        let targetLane = currentLane;
+        let isChangingLane = false;
+        let prevLane = currentLane;
+        let laneChangeTimer = 0;
+        const laneChangeDelay = 0.5; // seconds
+
+        // Red cube follow offsets.
+        const defaultFollowOffset = 6;
+        const nearFollowOffset = 3;
+        let chaseOffsetZCurrent = defaultFollowOffset;
+        let redCubeNearActive = false;
+        let redCubeNearTimer = 0;
+        const redCubeNearDuration = 20; // seconds
+
+        // Animate red cube's x-position.
+        let chaseXCurrent = lanes[currentLane];
+
+        // ----- Jump & Crouch Variables -----
+        let isJumping = false;
+        let jumpVelocity = 0;
+        const gravity = 20; // units per second^2
+        let isCrouching = false;
+        const normalY = 1.5;
+        const crouchY = 1.25;
+        const initialJumpVelocity = 8;
+
+        // ----- Player & Red Cube (Chase Cube) -----
+        const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
+        const playerMaterial = new THREE.MeshStandardMaterial({ color: 0xFFD700 });
+        const player = new THREE.Mesh(playerGeometry, playerMaterial);
+        player.position.set(lanes[currentLane], normalY, 0);
+        player.castShadow = true;
+        scene.add(player);
+
+        const chaseGeometry = new THREE.BoxGeometry(1, 1, 1);
+        const chaseMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0x000000, emissiveIntensity: 0 });
+        const chaseCube = new THREE.Mesh(chaseGeometry, chaseMaterial);
+        chaseCube.castShadow = true;
+        scene.add(chaseCube);
+
+        // ----- Track Creation with Lane Dividers -----
+        const trackGroup = new THREE.Group();
+        const numSegments = 20;
+        const segmentLength = 20;
+        const totalTrackLength = numSegments * segmentLength;
+        const trackWidth = 20;
+        const trackMaterial = new THREE.MeshStandardMaterial({ color: 0x444444 });
+        for (let i = 0; i < numSegments; i++) {
+            const segmentGeo = new THREE.PlaneGeometry(trackWidth, segmentLength);
+            const segment = new THREE.Mesh(segmentGeo, trackMaterial);
+            segment.rotation.x = -Math.PI / 2;
+            segment.position.z = -segmentLength / 2 - i * segmentLength;
+            segment.position.y = 0;
+            segment.receiveShadow = true;
+            // Add lane dividers.
+            const dividerMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+            const dividerGeo = new THREE.PlaneGeometry(0.1, segmentLength - 2);
+            dividerGeo.rotateY(-Math.PI / 2);
+            const divider1 = new THREE.Mesh(dividerGeo, dividerMaterial);
+            divider1.position.set(-2, 0.02, 0.2);
+            const divider2 = new THREE.Mesh(dividerGeo, dividerMaterial);
+            divider2.position.set(2, 0.02, 0.2);
+            segment.add(divider1);
+            segment.add(divider2);
+            trackGroup.add(segment);
+        }
+        scene.add(trackGroup);
+
+        // ----- Obstacles & Dynamic Difficulty Variables -----
+        let obstacles = [];
+        // Single spawn timer for obstacles.
+        let obstacleSpawnTimer = 0;
+        const baseSpawnInterval = 2; // seconds
+
+        // Color palettes.
+        const trainColors = [0x5A7D9A, 0x9A7D5A, 0x7D9A5A, 0x9A5A7D];
+        const jumpObstacleColors = [0x5A7D9A, 0x9A7D5A, 0x7D9A5A, 0x9A5A7D]; // could be same as trainColors
+        const rollObstacleColors = [0x7A8C8A, 0x8C7A8C, 0x7A8C7A, 0x8C8C7A];
+
+        // Spawn a train obstacle (jump obstacle, full train block).
+        function spawnTrain() {
+            const trainGroup = new THREE.Group();
+            const carCount = Math.floor(Math.random() * 7) + 2; // 2 to 8 cars.
+            const carWidth = 3, carHeight = 2, carLength = 8;
+            const gap = 0.5;
+            const color = trainColors[Math.floor(Math.random() * trainColors.length)];
+            const carMaterial = new THREE.MeshStandardMaterial({ color: color });
+            const carGeometry = new THREE.BoxGeometry(carWidth, carHeight, carLength);
+            for (let i = 0; i < carCount; i++) {
+                const car = new THREE.Mesh(carGeometry, carMaterial);
+                car.castShadow = true;
+                car.position.z = -i * (carLength + gap);
+                trainGroup.add(car);
+            }
+            trainGroup.userData.carCount = carCount;
+            trainGroup.userData.carLength = carLength;
+            trainGroup.userData.gap = gap;
+            const laneIndex = Math.floor(Math.random() * lanes.length);
+            trainGroup.position.set(lanes[laneIndex], normalY, -100);
+            trainGroup.userData.lane = laneIndex;
+            trainGroup.userData.type = "train";
+            obstacles.push(trainGroup);
+            scene.add(trainGroup);
+        }
+
+        // Spawn a jump obstacle (simple top bar) – player must jump over it.
+        function spawnJumpObstacle() {
+            const jumpGroup = new THREE.Group();
+            const barWidth = 2, barHeight = 1.5, barDepth = 1;
+            const color = jumpObstacleColors[Math.floor(Math.random() * jumpObstacleColors.length)];
+            const barMaterial = new THREE.MeshStandardMaterial({ color: color });
+            const barGeometry = new THREE.BoxGeometry(barWidth, barHeight, barDepth);
+            const topBar = new THREE.Mesh(barGeometry, barMaterial);
+            topBar.castShadow = true;
+            // Position so that the top of the bar is flush with the ground.
+            topBar.position.set(0, -0.2, 0);
+            jumpGroup.add(topBar);
+            const laneIndex = Math.floor(Math.random() * lanes.length);
+            jumpGroup.position.set(lanes[laneIndex], 0.8, -100);
+            jumpGroup.userData.lane = laneIndex;
+            jumpGroup.userData.type = "jumpObstacle";
+            obstacles.push(jumpGroup);
+            scene.add(jumpGroup);
+        }
+
+        // Spawn a roll obstacle (with supports) – player must crouch under it.
+        function spawnRollObstacle() {
+            const rollGroup = new THREE.Group();
+            const color = rollObstacleColors[Math.floor(Math.random() * rollObstacleColors.length)];
+            const barWidth = 2, barHeight = 1.2, barDepth = 1;
+            const barMaterial = new THREE.MeshStandardMaterial({ color: color });
+            const barGeometry = new THREE.BoxGeometry(barWidth, barHeight, barDepth);
+            const topBar = new THREE.Mesh(barGeometry, barMaterial);
+            topBar.castShadow = true;
+            topBar.position.set(0, -0.4, 0);
+            rollGroup.add(topBar);
+
+            const supportWidth = 0.3, supportHeight = 1.5, supportDepth = 0.3;
+            const supportMaterial = new THREE.MeshStandardMaterial({ color: color });
+            const supportGeometry = new THREE.BoxGeometry(supportWidth, supportHeight, supportDepth);
+            const leftSupport = new THREE.Mesh(supportGeometry, supportMaterial);
+            leftSupport.castShadow = true;
+            const rightSupport = new THREE.Mesh(supportGeometry, supportMaterial);
+            rightSupport.castShadow = true;
+            leftSupport.position.set(-0.85, -1.25, 0);
+            rightSupport.position.set(0.85, -1.25, 0);
+            rollGroup.add(leftSupport);
+            rollGroup.add(rightSupport);
+
+            const laneIndex = Math.floor(Math.random() * lanes.length);
+            rollGroup.position.set(lanes[laneIndex], 2.5, -100);
+            rollGroup.userData.lane = laneIndex;
+            rollGroup.userData.type = "rollObstacle";
+            obstacles.push(rollGroup);
+            scene.add(rollGroup);
+        }
+
+        // Combined spawnObstacle function that randomly chooses one of the three types.
+        function spawnObstacle() {
+            const r = Math.random();
+            if (r < 0.33) {
+                spawnTrain();
+            } else if (r < 0.66) {
+                spawnJumpObstacle();
+            } else {
+                spawnRollObstacle();
+            }
+        }
+
+        // ----- Input Handling -----
+        window.addEventListener("keydown", (e) => {
+            // Only check that the game is active.
+            if (!gameActive) return;
+
+            // Lane change controls: Always allow these, even if already changing lanes.
+            if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                // Update previous lane to the current lane.
+                prevLane = currentLane;
+                // Set a new target lane based on the key press.
+                if (e.key === "ArrowLeft" && currentLane > 0) {
+                    targetLane = currentLane - 1;
+                } else if (e.key === "ArrowRight" && currentLane < lanes.length - 1) {
+                    targetLane = currentLane + 1;
+                }
+                // Reset the lane change timer so that the animation adjusts to the new target.
+                laneChangeTimer = 0;
+                // Set the flag (or leave it true if already true).
+                isChangingLane = true;
+            }
+
+            // Jump: Allow jumping even during lane change.
+            if (e.key === "ArrowUp" && !isJumping) {
+                isJumping = true;
+                jumpVelocity = initialJumpVelocity;
+            }
+
+            // Crouch: Allow crouching even during lane change.
+            if (e.key === "ArrowDown" && !isCrouching) {
+                isCrouching = true;
+                player.scale.y = 0.5;
+                player.position.y = crouchY;
+            }
+        });
+
+        window.addEventListener("keyup", (e) => {
+            if (e.key === "ArrowDown" && isCrouching) {
+                isCrouching = false;
+                player.scale.y = 1;
+                player.position.y = normalY;
+            }
+        });
+
+        // ----- Collision Detection & Game Over -----
+        function checkCollisions() {
+            const playerBox = new THREE.Box3().setFromObject(player);
+            for (let obs of obstacles) {
+                // If roll obstacle and player is crouching, ignore collision.
+                if (obs.userData.type === "rollObstacle" && isCrouching) continue;
+                const obsBox = new THREE.Box3().setFromObject(obs);
+                if (playerBox.intersectsBox(obsBox)) return obs;
+            }
+            return null;
+        }
+
+        function showGameOverOverlay() {
+            let overlay = document.getElementById("gameOverOverlay");
+            if (!overlay) {
+                overlay = document.createElement("div");
+                overlay.id = "gameOverOverlay";
+                overlay.style.position = "fixed";
+                overlay.style.top = "0";
+                overlay.style.left = "0";
+                overlay.style.width = "100%";
+                overlay.style.height = "100%";
+                overlay.style.background = "rgba(0,0,0,0.8)";
+                overlay.style.display = "flex";
+                overlay.style.flexDirection = "column";
+                overlay.style.alignItems = "center";
+                overlay.style.justifyContent = "center";
+                overlay.style.color = "white";
+                overlay.style.fontFamily = "Arial, sans-serif";
+                overlay.style.fontSize = "36px";
+                overlay.style.zIndex = "1000";
+                overlay.style.cursor = "pointer";
+                overlay.innerHTML = `<div id="finalScore"></div><div style="font-size:24px; margin-top:20px;">Click anywhere to restart</div>`;
+                document.body.appendChild(overlay);
+                overlay.addEventListener("click", () => {
+                    location.reload();
+                });
+            }
+            document.getElementById("finalScore").innerText = `Game Over! Score: ${Math.floor(score)}`;
+        }
+
+        function gameOver() {
+            // Immediately show overlay, then start game-over animation.
+            showGameOverOverlay();
+            gameActive = false;
+            gameOverAnimActive = true;
+            gameOverAnimTimer = 0;
+        }
+
+        const laneChangeSpeed = 10; // units per second
+
+        // ----- Game Over Animation for Red Cube -----
+        function animateGameOver(delta) {
+            gameOverAnimTimer += delta;
+            if (gameOverAnimTimer < gameOverAnimDuration) {
+                // Animate red cube: move toward player, scale up, rotate, and glow.
+                chaseCube.position.lerp(player.position, delta * 2);
+                const targetScale = new THREE.Vector3(3, 3, 3);
+                chaseCube.scale.lerp(targetScale, delta * 2);
+                chaseCube.rotation.x += delta * 5;
+                chaseCube.rotation.y += delta * 5;
+                chaseCube.material.emissive = new THREE.Color(0xff0000);
+                chaseCube.material.emissiveIntensity = THREE.MathUtils.lerp(chaseCube.material.emissiveIntensity, 2, delta * 2);
+            } else {
+                gameOverAnimActive = false;
+            }
+        }
+
+
+        // ----- Dynamic Difficulty Variables -----
+        const baseSpeed = 30;
+
+        // ----- Main Animation Loop -----
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            // Run game over animation if active.
+            if (!gameActive && gameOverAnimActive) {
+                animateGameOver(delta);
+                renderer.render(scene, camera);
+                return;
+            } else if (!gameActive) {
+                renderer.render(scene, camera);
+                return;
+            }
+
+            const elapsedTime = clock.getElapsedTime();
+            const gameSpeed = baseSpeed + elapsedTime * 0.5;
+            let currentSpawnInterval = baseSpawnInterval / (1 + elapsedTime / 60);
+            currentSpawnInterval = Math.max(currentSpawnInterval, 0.5);
+
+            score += delta * 10;
+            document.getElementById("ui").textContent = "Score: " + Math.floor(score);
+
+            // Handle yellow cube lane change.
+            if (isChangingLane) {
+                laneChangeTimer += delta;
+                const targetX = lanes[targetLane];
+                const diff = targetX - player.position.x;
+                if (Math.abs(diff) < 0.05) {
+                    player.position.x = targetX;
+                    currentLane = targetLane;
+                    isChangingLane = false;
+                } else {
+                    player.position.x += Math.sign(diff) * laneChangeSpeed * delta;
+                }
+            }
+
+            // Animate red cube's x-position.
+            let targetXForChase = (isChangingLane && laneChangeTimer < laneChangeDelay) ? lanes[prevLane] : player.position.x;
+            chaseXCurrent = THREE.MathUtils.lerp(chaseXCurrent, targetXForChase, delta * 5);
+
+            // Jump physics.
+            if (isJumping) {
+                player.position.y += jumpVelocity * delta;
+                jumpVelocity -= gravity * delta;
+                if (player.position.y <= (isCrouching ? crouchY : normalY)) {
+                    player.position.y = (isCrouching ? crouchY : normalY);
+                    isJumping = false;
+                    jumpVelocity = 0;
+                }
+            }
+
+            // Update track segments.
+            trackGroup.children.forEach(segment => {
+                segment.position.z += gameSpeed * delta;
+                if (segment.position.z > 20) {
+                    segment.position.z -= totalTrackLength;
+                }
+            });
+
+            // Move obstacles toward the player.
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                let obs = obstacles[i];
+                obs.position.z += gameSpeed * delta;
+                if (obs.userData.type === "train" || obs.userData.type === "jumpObstacle") {
+                    const carCount = obs.userData.carCount;
+                    const carLength = obs.userData.carLength;
+                    const gap = obs.userData.gap;
+                    if (obs.position.z - ((carCount - 1) * (carLength + gap)) > 10) {
+                        scene.remove(obs);
+                        obstacles.splice(i, 1);
+                    }
+                } else if (obs.userData.type === "rollObstacle") {
+                    if (obs.position.z > 10) {
+                        scene.remove(obs);
+                        obstacles.splice(i, 1);
+                    }
+                }
+            }
+
+            obstacleSpawnTimer += delta;
+            if (obstacleSpawnTimer > currentSpawnInterval) {
+                spawnObstacle();
+                obstacleSpawnTimer = 0;
+            }
+
+            // Collision detection.
+            let collidedObs = checkCollisions();
+            if (collidedObs) {
+                if (collidedObs.userData.type === "train" || collidedObs.userData.type === "jumpObstacle") {
+                    const obstacleLaneX = lanes[collidedObs.userData.lane];
+                    const diffX = Math.abs(player.position.x - obstacleLaneX);
+                    if (isChangingLane && diffX > 0.3) {
+                        if (redCubeNearActive) {
+                            gameOver();
+                        } else {
+                            redCubeNearActive = true;
+                            redCubeNearTimer = 0;
+                            targetLane = prevLane;
+                            isChangingLane = true;
+                            laneChangeTimer = 0;
+                        }
+                    } else {
+                        gameOver();
+                    }
+                } else {
+                    gameOver();
+                }
+            }
+
+            if (redCubeNearActive) {
+                redCubeNearTimer += delta;
+                if (redCubeNearTimer >= redCubeNearDuration) {
+                    redCubeNearActive = false;
+                }
+            }
+
+            // Smoothly animate the red cube's z-offset.
+            const chaseOffsetZTarget = redCubeNearActive ? nearFollowOffset : defaultFollowOffset;
+            chaseOffsetZCurrent = THREE.MathUtils.lerp(chaseOffsetZCurrent, chaseOffsetZTarget, delta * 5);
+
+            // Update red cube's final position.
+            chaseCube.position.set(chaseXCurrent, player.position.y, player.position.z + chaseOffsetZCurrent);
+
+            // Camera follows the yellow cube.
+            camera.position.x = player.position.x;
+            camera.position.z = player.position.z + 10;
+            camera.lookAt(player.position);
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        window.addEventListener("resize", () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
-  </body>
+</body>
+
 </html>
